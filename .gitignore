@@ -1,0 +1,23 @@
+# Deno
+.deno/
+coverage/
+*.gpkg
+*.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Generated
+docs/generated/
+
+# Test artifacts
+tests/**/*.gpkg
+tests/**/*.db
