@@ -33,7 +33,42 @@ import * as rtree from "./rtree.ts";
 import * as schema from "./schema.ts";
 
 /**
- * GeoPackage database manager.
+ * Yield to the event loop to prevent blocking.
+ */
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/**
+ * Options for batch operations.
+ */
+export interface BatchOptions {
+  /** Yield to event loop every N operations (default: 100) */
+  yieldEvery?: number;
+  /** Progress callback */
+  onProgress?: (completed: number, total: number) => void;
+}
+
+/**
+ * Async GeoPackage database manager.
+ *
+ * @example
+ * ```ts
+ * const gpkg = await GeoPackage.open("mydata.gpkg");
+ *
+ * await gpkg.createFeatureTable({
+ *   tableName: "points",
+ *   geometryType: "POINT",
+ *   srsId: 4326,
+ * });
+ *
+ * const id = await gpkg.insertFeature("points", {
+ *   geometry: { type: "Point", coordinates: [0, 0] },
+ *   properties: {},
+ * });
+ *
+ * await gpkg.close();
+ * ```
  */
 export class GeoPackage {
   private db: Database;
@@ -41,25 +76,57 @@ export class GeoPackage {
   private _closed = false;
 
   /**
-   * Create or open a GeoPackage database.
+   * Private constructor. Use static `open()` or `memory()` methods.
+   */
+  private constructor(db: Database, path: string) {
+    this.db = db;
+    this._path = path;
+  }
+
+  /**
+   * Open or create a GeoPackage database.
    *
-   * @param path - Path to the GeoPackage file, or ":memory:" for in-memory database
+   * @param path - Path to the GeoPackage file
    * @param options - Database options
    */
-  constructor(path: string, options: GeoPackageOptions = {}) {
-    this._path = path;
+  static async open(
+    path: string,
+    options: GeoPackageOptions = {},
+  ): Promise<GeoPackage> {
+    await yieldToEventLoop();
 
-    // Open database
-    this.db = new Database(path, {
+    const db = new Database(path, {
       create: options.create ?? true,
       readonly: options.readonly ?? false,
-      memory: options.memory ?? path === ":memory:",
+      memory: options.memory ?? false,
     });
+
+    const gpkg = new GeoPackage(db, path);
 
     // Initialize GeoPackage tables if creating new database
     if (!options.readonly) {
-      this.initializeTables();
+      gpkg.initializeTables();
     }
+
+    return gpkg;
+  }
+
+  /**
+   * Create an in-memory GeoPackage database.
+   */
+  static async memory(): Promise<GeoPackage> {
+    await yieldToEventLoop();
+
+    const db = new Database(":memory:", {
+      create: true,
+      readonly: false,
+      memory: true,
+    });
+
+    const gpkg = new GeoPackage(db, ":memory:");
+    gpkg.initializeTables();
+
+    return gpkg;
   }
 
   /**
@@ -91,7 +158,8 @@ export class GeoPackage {
   /**
    * Close the database connection.
    */
-  close(): void {
+  async close(): Promise<void> {
+    await yieldToEventLoop();
     if (!this._closed) {
       this.db.close();
       this._closed = true;
@@ -100,8 +168,10 @@ export class GeoPackage {
 
   /**
    * Execute a transaction.
+   * Note: The callback must be synchronous as SQLite transactions are synchronous.
    */
-  transaction<T>(fn: () => T): T {
+  async transaction<T>(fn: () => T): Promise<T> {
+    await yieldToEventLoop();
     const txn = this.db.transaction(fn);
     return txn();
   }
@@ -111,100 +181,125 @@ export class GeoPackage {
   /**
    * Get a spatial reference system by ID.
    */
-  getSpatialReferenceSystem(srsId: number): SpatialReferenceSystem | undefined {
+  async getSpatialReferenceSystem(
+    srsId: number,
+  ): Promise<SpatialReferenceSystem | undefined> {
+    await yieldToEventLoop();
     return srs.getSpatialReferenceSystem(this.db, srsId);
   }
 
   /**
    * List all spatial reference systems.
    */
-  listSpatialReferenceSystems(): SpatialReferenceSystem[] {
+  async listSpatialReferenceSystems(): Promise<SpatialReferenceSystem[]> {
+    await yieldToEventLoop();
     return srs.listSpatialReferenceSystems(this.db);
   }
 
   /**
-   * Add a new spatial reference system.
+   * Add a spatial reference system.
    */
-  addSpatialReferenceSystem(srsData: SpatialReferenceSystem): void {
-    srs.addSpatialReferenceSystem(this.db, srsData);
+  async addSpatialReferenceSystem(
+    system: SpatialReferenceSystem,
+  ): Promise<void> {
+    await yieldToEventLoop();
+    srs.addSpatialReferenceSystem(this.db, system);
   }
 
   /**
-   * Update an existing spatial reference system.
+   * Update a spatial reference system.
    */
-  updateSpatialReferenceSystem(srsData: SpatialReferenceSystem): void {
-    srs.updateSpatialReferenceSystem(this.db, srsData);
+  async updateSpatialReferenceSystem(
+    system: SpatialReferenceSystem,
+  ): Promise<void> {
+    await yieldToEventLoop();
+    srs.updateSpatialReferenceSystem(this.db, system);
   }
 
   /**
    * Delete a spatial reference system.
    */
-  deleteSpatialReferenceSystem(srsId: number): void {
+  async deleteSpatialReferenceSystem(srsId: number): Promise<void> {
+    await yieldToEventLoop();
     srs.deleteSpatialReferenceSystem(this.db, srsId);
   }
 
   /**
    * Check if a spatial reference system exists.
    */
-  hasSpatialReferenceSystem(srsId: number): boolean {
+  async hasSpatialReferenceSystem(srsId: number): Promise<boolean> {
+    await yieldToEventLoop();
     return srs.hasSpatialReferenceSystem(this.db, srsId);
   }
 
   // ========== Contents ==========
 
   /**
-   * Get content entry by table name.
+   * Get content metadata by table name.
    */
-  getContent(tableName: string): Content | undefined {
+  async getContent(tableName: string): Promise<Content | undefined> {
+    await yieldToEventLoop();
     return contents.getContent(this.db, tableName);
   }
 
   /**
    * List all content entries.
    */
-  listContents(): Content[] {
+  async listContents(): Promise<Content[]> {
+    await yieldToEventLoop();
     return contents.listContents(this.db);
   }
 
   /**
-   * List contents by data type.
+   * List content entries by data type.
    */
-  listContentsByType(dataType: "features" | "tiles" | "attributes"): Content[] {
+  async listContentsByType(
+    dataType: "features" | "tiles" | "attributes",
+  ): Promise<Content[]> {
+    await yieldToEventLoop();
     return contents.listContentsByType(this.db, dataType);
   }
 
   /**
-   * Add a new content entry.
+   * Add a content entry.
    */
-  addContent(content: Content): void {
+  async addContent(content: Omit<Content, "lastChange">): Promise<void> {
+    await yieldToEventLoop();
     contents.addContent(this.db, content);
   }
 
   /**
-   * Update an existing content entry.
+   * Update content metadata.
    */
-  updateContent(content: Content): void {
+  async updateContent(content: Content): Promise<void> {
+    await yieldToEventLoop();
     contents.updateContent(this.db, content);
   }
 
   /**
-   * Update the bounding box for a content entry.
+   * Update content bounds.
    */
-  updateContentBounds(tableName: string, bounds: BoundingBox): void {
+  async updateContentBounds(
+    tableName: string,
+    bounds: BoundingBox,
+  ): Promise<void> {
+    await yieldToEventLoop();
     contents.updateContentBounds(this.db, tableName, bounds);
   }
 
   /**
    * Delete a content entry.
    */
-  deleteContent(tableName: string): void {
+  async deleteContent(tableName: string): Promise<void> {
+    await yieldToEventLoop();
     contents.deleteContent(this.db, tableName);
   }
 
   /**
    * Check if a content entry exists.
    */
-  hasContent(tableName: string): boolean {
+  async hasContent(tableName: string): Promise<boolean> {
+    await yieldToEventLoop();
     return contents.hasContent(this.db, tableName);
   }
 
@@ -213,241 +308,300 @@ export class GeoPackage {
   /**
    * Create a feature table.
    */
-  createFeatureTable(config: FeatureTableConfig): void {
+  async createFeatureTable(config: FeatureTableConfig): Promise<void> {
+    await yieldToEventLoop();
     features.createFeatureTable(this.db, config);
   }
 
   /**
-   * Get geometry column metadata.
+   * Get geometry column metadata for a table.
    */
-  getGeometryColumn(tableName: string): GeometryColumn | undefined {
+  async getGeometryColumn(
+    tableName: string,
+  ): Promise<GeometryColumn | undefined> {
+    await yieldToEventLoop();
     return features.getGeometryColumn(this.db, tableName);
   }
 
   /**
    * List all geometry columns.
    */
-  listGeometryColumns(): GeometryColumn[] {
+  async listGeometryColumns(): Promise<GeometryColumn[]> {
+    await yieldToEventLoop();
     return features.listGeometryColumns(this.db);
   }
 
   /**
-   * Insert a feature into a table.
+   * Insert a feature.
    */
-  insertFeature<T = Record<string, unknown>>(
+  async insertFeature<T = Record<string, unknown>>(
     tableName: string,
     feature: Omit<Feature<T>, "id">,
-  ): number {
+  ): Promise<number> {
+    await yieldToEventLoop();
     return features.insertFeature(this.db, tableName, feature);
+  }
+
+  /**
+   * Insert multiple features with periodic yielding.
+   */
+  async insertFeatures<T = Record<string, unknown>>(
+    tableName: string,
+    featureList: Omit<Feature<T>, "id">[],
+    options: BatchOptions = {},
+  ): Promise<number[]> {
+    const yieldEvery = options.yieldEvery ?? 100;
+    const ids: number[] = [];
+
+    for (let i = 0; i < featureList.length; i++) {
+      if (i > 0 && i % yieldEvery === 0) {
+        await yieldToEventLoop();
+        options.onProgress?.(i, featureList.length);
+      }
+      ids.push(features.insertFeature(this.db, tableName, featureList[i]));
+    }
+
+    options.onProgress?.(featureList.length, featureList.length);
+    return ids;
   }
 
   /**
    * Get a feature by ID.
    */
-  getFeature<T = Record<string, unknown>>(
+  async getFeature<T = Record<string, unknown>>(
     tableName: string,
     id: number,
-  ): Feature<T> | undefined {
+  ): Promise<Feature<T> | undefined> {
+    await yieldToEventLoop();
     return features.getFeature(this.db, tableName, id);
   }
 
   /**
-   * Query features from a table.
+   * Query features.
    */
-  queryFeatures<T = Record<string, unknown>>(
+  async queryFeatures<T = Record<string, unknown>>(
     tableName: string,
     options?: FeatureQueryOptions,
-  ): Feature<T>[] {
+  ): Promise<Feature<T>[]> {
+    await yieldToEventLoop();
     return features.queryFeatures(this.db, tableName, options);
   }
 
   /**
-   * Iterate over all features in a table.
+   * Iterate over features asynchronously.
    */
-  iterateFeatures<T = Record<string, unknown>>(
+  async *iterateFeatures<T = Record<string, unknown>>(
     tableName: string,
-  ): Generator<Feature<T>> {
-    return features.iterateFeatures(this.db, tableName);
+    options: { yieldEvery?: number } = {},
+  ): AsyncGenerator<Feature<T>, void, unknown> {
+    const yieldEvery = options.yieldEvery ?? 100;
+    let count = 0;
+
+    for (const feature of features.iterateFeatures<T>(this.db, tableName)) {
+      yield feature;
+      count++;
+      if (count % yieldEvery === 0) {
+        await yieldToEventLoop();
+      }
+    }
   }
 
   /**
    * Update a feature.
    */
-  updateFeature<T = Record<string, unknown>>(
+  async updateFeature<T = Record<string, unknown>>(
     tableName: string,
     id: number,
     updates: Partial<Omit<Feature<T>, "id">>,
-  ): void {
+  ): Promise<void> {
+    await yieldToEventLoop();
     features.updateFeature(this.db, tableName, id, updates);
   }
 
   /**
    * Delete a feature.
    */
-  deleteFeature(tableName: string, id: number): void {
+  async deleteFeature(tableName: string, id: number): Promise<void> {
+    await yieldToEventLoop();
     features.deleteFeature(this.db, tableName, id);
   }
 
   /**
-   * Count features in a table.
+   * Count features.
    */
-  countFeatures(
+  async countFeatures(
     tableName: string,
     options?: Pick<FeatureQueryOptions, "where" | "bounds">,
-  ): number {
+  ): Promise<number> {
+    await yieldToEventLoop();
     return features.countFeatures(this.db, tableName, options);
   }
 
   /**
-   * Calculate bounding box of all features in a table.
+   * Calculate feature bounds.
    */
-  calculateFeatureBounds(tableName: string): BoundingBox | undefined {
+  async calculateFeatureBounds(
+    tableName: string,
+  ): Promise<BoundingBox | undefined> {
+    await yieldToEventLoop();
     return features.calculateFeatureBounds(this.db, tableName);
   }
 
   // ========== Spatial Index ==========
 
   /**
-   * Check if a spatial index exists for a feature table.
+   * Check if a spatial index exists.
    */
-  hasSpatialIndex(tableName: string): boolean {
+  async hasSpatialIndex(tableName: string): Promise<boolean> {
+    await yieldToEventLoop();
     return rtree.hasSpatialIndex(this.db, tableName);
   }
 
   /**
-   * Create a spatial index for a feature table.
-   * The index will be automatically maintained during insert/update/delete operations.
+   * Create a spatial index.
    */
-  createSpatialIndex(tableName: string): void {
+  async createSpatialIndex(tableName: string): Promise<void> {
+    await yieldToEventLoop();
     rtree.createSpatialIndex(this.db, tableName);
   }
 
   /**
-   * Drop a spatial index for a feature table.
+   * Drop a spatial index.
    */
-  dropSpatialIndex(tableName: string): void {
+  async dropSpatialIndex(tableName: string): Promise<void> {
+    await yieldToEventLoop();
     rtree.dropSpatialIndex(this.db, tableName);
   }
 
   /**
-   * Rebuild the spatial index from existing feature data.
-   * Useful if the index gets out of sync.
+   * Rebuild a spatial index.
    */
-  rebuildSpatialIndex(tableName: string): void {
+  async rebuildSpatialIndex(tableName: string): Promise<void> {
+    await yieldToEventLoop();
     rtree.populateSpatialIndex(this.db, tableName);
   }
 
-  // ========== Schema (Data Columns) ==========
+  // ========== Schema Extension ==========
 
   /**
-   * Add a data column definition with metadata.
+   * Add a data column definition.
    */
-  addDataColumn(column: schema.DataColumn): void {
+  async addDataColumn(column: schema.DataColumn): Promise<void> {
+    await yieldToEventLoop();
     schema.addDataColumn(this.db, column);
   }
 
   /**
    * Get a data column definition.
    */
-  getDataColumn(
+  async getDataColumn(
     tableName: string,
     columnName: string,
-  ): schema.DataColumn | undefined {
+  ): Promise<schema.DataColumn | undefined> {
+    await yieldToEventLoop();
     return schema.getDataColumn(this.db, tableName, columnName);
   }
 
   /**
-   * List all data column definitions for a table.
+   * List data column definitions for a table.
    */
-  listDataColumns(tableName: string): schema.DataColumn[] {
+  async listDataColumns(tableName: string): Promise<schema.DataColumn[]> {
+    await yieldToEventLoop();
     return schema.listDataColumns(this.db, tableName);
   }
 
   /**
    * Update a data column definition.
    */
-  updateDataColumn(column: schema.DataColumn): void {
+  async updateDataColumn(column: schema.DataColumn): Promise<void> {
+    await yieldToEventLoop();
     schema.updateDataColumn(this.db, column);
   }
 
   /**
    * Delete a data column definition.
    */
-  deleteDataColumn(tableName: string, columnName: string): void {
+  async deleteDataColumn(tableName: string, columnName: string): Promise<void> {
+    await yieldToEventLoop();
     schema.deleteDataColumn(this.db, tableName, columnName);
   }
 
   /**
    * Add a range constraint.
    */
-  addRangeConstraint(
-    constraint: Omit<schema.RangeConstraint, "constraintType">,
-  ): void {
+  async addRangeConstraint(constraint: schema.RangeConstraint): Promise<void> {
+    await yieldToEventLoop();
     schema.addRangeConstraint(this.db, constraint);
   }
 
   /**
    * Add an enum constraint value.
    */
-  addEnumConstraint(
-    constraint: Omit<schema.EnumConstraint, "constraintType">,
-  ): void {
+  async addEnumConstraint(constraint: schema.EnumConstraint): Promise<void> {
+    await yieldToEventLoop();
     schema.addEnumConstraint(this.db, constraint);
   }
 
   /**
-   * Add a glob constraint (pattern matching).
+   * Add a glob constraint.
    */
-  addGlobConstraint(
-    constraint: Omit<schema.GlobConstraint, "constraintType">,
-  ): void {
+  async addGlobConstraint(constraint: schema.GlobConstraint): Promise<void> {
+    await yieldToEventLoop();
     schema.addGlobConstraint(this.db, constraint);
   }
 
   /**
-   * Get all constraints with a given name.
+   * Get constraints by name.
    */
-  getConstraints(constraintName: string): schema.DataColumnConstraint[] {
+  async getConstraints(
+    constraintName: string,
+  ): Promise<schema.DataColumnConstraint[]> {
+    await yieldToEventLoop();
     return schema.getConstraints(this.db, constraintName);
   }
 
   /**
    * Get enum values for a constraint.
    */
-  getEnumValues(constraintName: string): string[] {
+  async getEnumValues(constraintName: string): Promise<string[]> {
+    await yieldToEventLoop();
     return schema.getEnumValues(this.db, constraintName);
   }
 
   /**
-   * Get range constraint details.
+   * Get a range constraint.
    */
-  getRangeConstraint(
+  async getRangeConstraint(
     constraintName: string,
-  ): schema.RangeConstraint | undefined {
+  ): Promise<schema.RangeConstraint | undefined> {
+    await yieldToEventLoop();
     return schema.getRangeConstraint(this.db, constraintName);
   }
 
   /**
    * List all constraint names.
    */
-  listConstraintNames(): string[] {
+  async listConstraintNames(): Promise<string[]> {
+    await yieldToEventLoop();
     return schema.listConstraintNames(this.db);
   }
 
   /**
    * Delete a constraint.
    */
-  deleteConstraint(constraintName: string): void {
+  async deleteConstraint(constraintName: string): Promise<void> {
+    await yieldToEventLoop();
     schema.deleteConstraint(this.db, constraintName);
   }
 
   /**
    * Validate a value against a constraint.
    */
-  validateValueAgainstConstraint(
+  async validateValueAgainstConstraint(
     constraintName: string,
     value: unknown,
-  ): boolean {
+  ): Promise<boolean> {
+    await yieldToEventLoop();
     return schema.validateValueAgainstConstraint(
       this.db,
       constraintName,
@@ -458,291 +612,384 @@ export class GeoPackage {
   // ========== GeoJSON ==========
 
   /**
-   * Export features from a table to GeoJSON FeatureCollection.
+   * Export features to GeoJSON.
    */
-  toGeoJSON(
+  async toGeoJSON(
     tableName: string,
     options?: geojson.ToGeoJSONOptions,
-  ): geojson.GeoJSONFeatureCollection {
+  ): Promise<geojson.GeoJSONFeatureCollection> {
+    await yieldToEventLoop();
     return geojson.toGeoJSON(this.db, tableName, options);
   }
 
   /**
-   * Import features from GeoJSON FeatureCollection into a table.
-   * Creates a new table or appends to existing one.
+   * Import features from GeoJSON.
    */
-  fromGeoJSON(
+  async fromGeoJSON(
     geojsonData: geojson.GeoJSONFeatureCollection,
     options: geojson.FromGeoJSONOptions,
-  ): { tableName: string; insertedCount: number } {
+  ): Promise<{ tableName: string; insertedCount: number }> {
+    await yieldToEventLoop();
     return geojson.fromGeoJSON(this.db, geojsonData, options);
   }
 
-  // ========== Attributes ==========
+  // ========== Attribute Tables ==========
 
   /**
-   * Create an attribute table (non-spatial table).
+   * Create an attribute table.
    */
-  createAttributeTable(config: AttributeTableConfig): void {
+  async createAttributeTable(config: AttributeTableConfig): Promise<void> {
+    await yieldToEventLoop();
     attributes.createAttributeTable(this.db, config);
   }
 
   /**
-   * Insert a row into an attribute table.
+   * Insert an attribute row.
    */
-  insertAttribute<T = Record<string, unknown>>(
+  async insertAttribute<T = Record<string, unknown>>(
     tableName: string,
     row: Omit<attributes.AttributeRow<T>, "id">,
-  ): number {
+  ): Promise<number> {
+    await yieldToEventLoop();
     return attributes.insertAttribute(this.db, tableName, row);
+  }
+
+  /**
+   * Insert multiple attribute rows with periodic yielding.
+   */
+  async insertAttributes<T = Record<string, unknown>>(
+    tableName: string,
+    rows: Omit<attributes.AttributeRow<T>, "id">[],
+    options: BatchOptions = {},
+  ): Promise<number[]> {
+    const yieldEvery = options.yieldEvery ?? 100;
+    const ids: number[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      if (i > 0 && i % yieldEvery === 0) {
+        await yieldToEventLoop();
+        options.onProgress?.(i, rows.length);
+      }
+      ids.push(attributes.insertAttribute(this.db, tableName, rows[i]));
+    }
+
+    options.onProgress?.(rows.length, rows.length);
+    return ids;
   }
 
   /**
    * Get an attribute row by ID.
    */
-  getAttribute<T = Record<string, unknown>>(
+  async getAttribute<T = Record<string, unknown>>(
     tableName: string,
     id: number,
-  ): attributes.AttributeRow<T> | undefined {
+  ): Promise<attributes.AttributeRow<T> | undefined> {
+    await yieldToEventLoop();
     return attributes.getAttribute(this.db, tableName, id);
   }
 
   /**
-   * Query rows from an attribute table.
+   * Query attribute rows.
    */
-  queryAttributes<T = Record<string, unknown>>(
+  async queryAttributes<T = Record<string, unknown>>(
     tableName: string,
     options?: attributes.AttributeQueryOptions,
-  ): attributes.AttributeRow<T>[] {
+  ): Promise<attributes.AttributeRow<T>[]> {
+    await yieldToEventLoop();
     return attributes.queryAttributes(this.db, tableName, options);
   }
 
   /**
    * Update an attribute row.
    */
-  updateAttribute<T = Record<string, unknown>>(
+  async updateAttribute<T = Record<string, unknown>>(
     tableName: string,
     id: number,
     updates: Partial<T>,
-  ): void {
+  ): Promise<void> {
+    await yieldToEventLoop();
     attributes.updateAttribute(this.db, tableName, id, updates);
   }
 
   /**
    * Delete an attribute row.
    */
-  deleteAttribute(tableName: string, id: number): void {
+  async deleteAttribute(tableName: string, id: number): Promise<void> {
+    await yieldToEventLoop();
     attributes.deleteAttribute(this.db, tableName, id);
   }
 
   /**
-   * Count rows in an attribute table.
+   * Count attribute rows.
    */
-  countAttributes(
+  async countAttributes(
     tableName: string,
     options?: Pick<attributes.AttributeQueryOptions, "where">,
-  ): number {
+  ): Promise<number> {
+    await yieldToEventLoop();
     return attributes.countAttributes(this.db, tableName, options);
   }
 
   // ========== Tiles ==========
 
   /**
-   * Create a tile matrix set and tile pyramid table.
+   * Create a tile matrix set.
    */
-  createTileMatrixSet(config: TileMatrixSet): void {
+  async createTileMatrixSet(config: TileMatrixSet): Promise<void> {
+    await yieldToEventLoop();
     tiles.createTileMatrixSet(this.db, config);
   }
 
   /**
-   * Get tile matrix set by table name.
+   * Get a tile matrix set.
    */
-  getTileMatrixSet(tableName: string): TileMatrixSet | undefined {
+  async getTileMatrixSet(
+    tableName: string,
+  ): Promise<TileMatrixSet | undefined> {
+    await yieldToEventLoop();
     return tiles.getTileMatrixSet(this.db, tableName);
   }
 
   /**
    * List all tile matrix sets.
    */
-  listTileMatrixSets(): TileMatrixSet[] {
+  async listTileMatrixSets(): Promise<TileMatrixSet[]> {
+    await yieldToEventLoop();
     return tiles.listTileMatrixSets(this.db);
   }
 
   /**
-   * Add a tile matrix (zoom level) to a tile matrix set.
+   * Add a tile matrix (zoom level).
    */
-  addTileMatrix(matrix: TileMatrix): void {
+  async addTileMatrix(matrix: TileMatrix): Promise<void> {
+    await yieldToEventLoop();
     tiles.addTileMatrix(this.db, matrix);
   }
 
   /**
-   * Get tile matrix by table name and zoom level.
+   * Get a tile matrix.
    */
-  getTileMatrix(tableName: string, zoomLevel: number): TileMatrix | undefined {
+  async getTileMatrix(
+    tableName: string,
+    zoomLevel: number,
+  ): Promise<TileMatrix | undefined> {
+    await yieldToEventLoop();
     return tiles.getTileMatrix(this.db, tableName, zoomLevel);
   }
 
   /**
-   * List all tile matrices for a table.
+   * List tile matrices for a table.
    */
-  listTileMatrices(tableName: string): TileMatrix[] {
+  async listTileMatrices(tableName: string): Promise<TileMatrix[]> {
+    await yieldToEventLoop();
     return tiles.listTileMatrices(this.db, tableName);
   }
 
   /**
-   * Insert a tile into a tile pyramid table.
-   * @param tableName - The tile table name
-   * @param tile - The tile data to insert
-   * @param validationOptions - Optional validation options for tile image format
+   * Insert a tile.
    */
-  insertTile(
+  async insertTile(
     tableName: string,
     tile: Omit<Tile, "id">,
     validationOptions?: tiles.TileValidationOptions,
-  ): number {
+  ): Promise<number> {
+    await yieldToEventLoop();
     return tiles.insertTile(this.db, tableName, tile, validationOptions);
   }
 
   /**
-   * Detect the image format of tile data.
-   * @returns The detected format: "png", "jpeg", "webp", or "unknown"
+   * Insert multiple tiles with periodic yielding.
    */
-  detectTileFormat(data: Uint8Array): tiles.TileImageFormat {
+  async insertTiles(
+    tableName: string,
+    tileList: Omit<Tile, "id">[],
+    options: BatchOptions & {
+      validationOptions?: tiles.TileValidationOptions;
+    } = {},
+  ): Promise<number[]> {
+    const yieldEvery = options.yieldEvery ?? 50;
+    const ids: number[] = [];
+
+    for (let i = 0; i < tileList.length; i++) {
+      if (i > 0 && i % yieldEvery === 0) {
+        await yieldToEventLoop();
+        options.onProgress?.(i, tileList.length);
+      }
+      ids.push(
+        tiles.insertTile(
+          this.db,
+          tableName,
+          tileList[i],
+          options.validationOptions,
+        ),
+      );
+    }
+
+    options.onProgress?.(tileList.length, tileList.length);
+    return ids;
+  }
+
+  /**
+   * Detect tile image format.
+   */
+  async detectTileFormat(data: Uint8Array): Promise<tiles.TileImageFormat> {
+    await yieldToEventLoop();
     return tiles.detectTileFormat(data);
   }
 
   /**
-   * Validate tile image data.
-   * @throws Error if the image format is unknown or not allowed
+   * Validate tile data.
    */
-  validateTileData(
+  async validateTileData(
     data: Uint8Array,
     options?: tiles.TileValidationOptions,
-  ): tiles.TileImageFormat {
+  ): Promise<tiles.TileImageFormat> {
+    await yieldToEventLoop();
     return tiles.validateTileData(data, options);
   }
 
   /**
-   * Get a tile by coordinates.
+   * Get a tile.
    */
-  getTile(
+  async getTile(
     tableName: string,
     coords: { zoom: number; column: number; row: number },
-  ): Tile | undefined {
+  ): Promise<Tile | undefined> {
+    await yieldToEventLoop();
     return tiles.getTile(this.db, tableName, coords);
   }
 
   /**
-   * Query tiles from a table.
+   * Query tiles.
    */
-  queryTiles(tableName: string, options?: TileQueryOptions): Tile[] {
+  async queryTiles(
+    tableName: string,
+    options?: TileQueryOptions,
+  ): Promise<Tile[]> {
+    await yieldToEventLoop();
     return tiles.queryTiles(this.db, tableName, options);
   }
 
   /**
    * Delete a tile.
    */
-  deleteTile(
+  async deleteTile(
     tableName: string,
     coords: { zoom: number; column: number; row: number },
-  ): void {
+  ): Promise<void> {
+    await yieldToEventLoop();
     tiles.deleteTile(this.db, tableName, coords);
   }
 
   /**
-   * Count tiles in a table.
+   * Count tiles.
    */
-  countTiles(
+  async countTiles(
     tableName: string,
     options?: Pick<TileQueryOptions, "zoom">,
-  ): number {
+  ): Promise<number> {
+    await yieldToEventLoop();
     return tiles.countTiles(this.db, tableName, options);
   }
 
   /**
-   * Get available zoom levels for a tile table.
+   * Get available zoom levels.
    */
-  getAvailableZoomLevels(tableName: string): number[] {
+  async getAvailableZoomLevels(tableName: string): Promise<number[]> {
+    await yieldToEventLoop();
     return tiles.getAvailableZoomLevels(this.db, tableName);
   }
 
   // ========== Extensions ==========
 
   /**
-   * Add an extension registration.
+   * Add an extension.
    */
-  addExtension(extension: Extension): void {
+  async addExtension(extension: Extension): Promise<void> {
+    await yieldToEventLoop();
     extensions.addExtension(this.db, extension);
   }
 
   /**
-   * Get an extension registration.
+   * Get an extension.
    */
-  getExtension(
+  async getExtension(
     extensionName: string,
     tableName?: string | null,
     columnName?: string | null,
-  ): Extension | undefined {
+  ): Promise<Extension | undefined> {
+    await yieldToEventLoop();
     return extensions.getExtension(
       this.db,
       extensionName,
-      tableName,
-      columnName,
+      tableName ?? null,
+      columnName ?? null,
     );
   }
 
   /**
-   * List all extension registrations.
+   * List all extensions.
    */
-  listExtensions(): Extension[] {
+  async listExtensions(): Promise<Extension[]> {
+    await yieldToEventLoop();
     return extensions.listExtensions(this.db);
   }
 
   /**
-   * List extensions for a specific table.
+   * List extensions for a table.
    */
-  listTableExtensions(tableName: string): Extension[] {
+  async listTableExtensions(tableName: string): Promise<Extension[]> {
+    await yieldToEventLoop();
     return extensions.listTableExtensions(this.db, tableName);
   }
 
   /**
    * List database-wide extensions.
    */
-  listDatabaseExtensions(): Extension[] {
+  async listDatabaseExtensions(): Promise<Extension[]> {
+    await yieldToEventLoop();
     return extensions.listDatabaseExtensions(this.db);
   }
 
   /**
-   * Check if an extension is registered.
+   * Check if an extension exists.
    */
-  hasExtension(
+  async hasExtension(
     extensionName: string,
     tableName?: string | null,
     columnName?: string | null,
-  ): boolean {
+  ): Promise<boolean> {
+    await yieldToEventLoop();
     return extensions.hasExtension(
       this.db,
       extensionName,
-      tableName,
-      columnName,
+      tableName ?? null,
+      columnName ?? null,
     );
   }
 
   /**
-   * Delete an extension registration.
+   * Delete an extension.
    */
-  deleteExtension(
+  async deleteExtension(
     extensionName: string,
     tableName?: string | null,
     columnName?: string | null,
-  ): void {
-    extensions.deleteExtension(this.db, extensionName, tableName, columnName);
+  ): Promise<void> {
+    await yieldToEventLoop();
+    extensions.deleteExtension(
+      this.db,
+      extensionName,
+      tableName ?? null,
+      columnName ?? null,
+    );
   }
 
   /**
    * Delete all extensions for a table.
    */
-  deleteTableExtensions(tableName: string): void {
+  async deleteTableExtensions(tableName: string): Promise<void> {
+    await yieldToEventLoop();
     extensions.deleteTableExtensions(this.db, tableName);
   }
 }

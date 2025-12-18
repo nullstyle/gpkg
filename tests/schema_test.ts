@@ -2,15 +2,15 @@
  * Schema extension (gpkg_data_columns) unit tests.
  */
 
-import { assertEquals, assertExists, assertThrows } from "@std/assert";
+import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert";
 import { GeoPackage } from "../mod.ts";
 
 // ============== Data Column Definitions ==============
 
-Deno.test("Schema - Add and get data column definition", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Add and get data column definition", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.createFeatureTable({
+  await gpkg.createFeatureTable({
     tableName: "cities",
     geometryType: "POINT",
     srsId: 4326,
@@ -21,7 +21,7 @@ Deno.test("Schema - Add and get data column definition", () => {
   });
 
   // Add data column definition
-  gpkg.addDataColumn({
+  await gpkg.addDataColumn({
     tableName: "cities",
     columnName: "name",
     name: "city_name",
@@ -30,7 +30,7 @@ Deno.test("Schema - Add and get data column definition", () => {
   });
 
   // Get data column definition
-  const col = gpkg.getDataColumn("cities", "name");
+  const col = await gpkg.getDataColumn("cities", "name");
   assertExists(col);
   assertEquals(col.tableName, "cities");
   assertEquals(col.columnName, "name");
@@ -38,37 +38,37 @@ Deno.test("Schema - Add and get data column definition", () => {
   assertEquals(col.title, "City Name");
   assertEquals(col.description, "The official name of the city");
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("Schema - Add data column with mime type", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Add data column with mime type", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.createFeatureTable({
+  await gpkg.createFeatureTable({
     tableName: "documents",
     geometryType: "POINT",
     srsId: 4326,
     columns: [{ name: "content", type: "BLOB" }],
   });
 
-  gpkg.addDataColumn({
+  await gpkg.addDataColumn({
     tableName: "documents",
     columnName: "content",
     title: "Document Content",
     mimeType: "application/pdf",
   });
 
-  const col = gpkg.getDataColumn("documents", "content");
+  const col = await gpkg.getDataColumn("documents", "content");
   assertExists(col);
   assertEquals(col.mimeType, "application/pdf");
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("Schema - List data columns for table", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - List data columns for table", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.createFeatureTable({
+  await gpkg.createFeatureTable({
     tableName: "places",
     geometryType: "POINT",
     srsId: 4326,
@@ -79,25 +79,25 @@ Deno.test("Schema - List data columns for table", () => {
     ],
   });
 
-  gpkg.addDataColumn({
+  await gpkg.addDataColumn({
     tableName: "places",
     columnName: "name",
     title: "Place Name",
   });
 
-  gpkg.addDataColumn({
+  await gpkg.addDataColumn({
     tableName: "places",
     columnName: "category",
     title: "Category",
   });
 
-  gpkg.addDataColumn({
+  await gpkg.addDataColumn({
     tableName: "places",
     columnName: "rating",
     title: "Rating",
   });
 
-  const columns = gpkg.listDataColumns("places");
+  const columns = await gpkg.listDataColumns("places");
   assertEquals(columns.length, 3);
 
   // Should be sorted by column name
@@ -105,20 +105,20 @@ Deno.test("Schema - List data columns for table", () => {
   assertEquals(columns[1].columnName, "name");
   assertEquals(columns[2].columnName, "rating");
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("Schema - Update data column definition", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Update data column definition", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.createFeatureTable({
+  await gpkg.createFeatureTable({
     tableName: "items",
     geometryType: "POINT",
     srsId: 4326,
     columns: [{ name: "status", type: "TEXT" }],
   });
 
-  gpkg.addDataColumn({
+  await gpkg.addDataColumn({
     tableName: "items",
     columnName: "status",
     title: "Item Status",
@@ -132,61 +132,61 @@ Deno.test("Schema - Update data column definition", () => {
     description: "The current status of the item",
   });
 
-  const col = gpkg.getDataColumn("items", "status");
+  const col = await gpkg.getDataColumn("items", "status");
   assertExists(col);
   assertEquals(col.title, "Current Status");
   assertEquals(col.description, "The current status of the item");
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("Schema - Delete data column definition", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Delete data column definition", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.createFeatureTable({
+  await gpkg.createFeatureTable({
     tableName: "test_table",
     geometryType: "POINT",
     srsId: 4326,
     columns: [{ name: "field", type: "TEXT" }],
   });
 
-  gpkg.addDataColumn({
+  await gpkg.addDataColumn({
     tableName: "test_table",
     columnName: "field",
     title: "Test Field",
   });
 
   // Verify it exists
-  assertExists(gpkg.getDataColumn("test_table", "field"));
+  assertExists(await gpkg.getDataColumn("test_table", "field"));
 
   // Delete it
   gpkg.deleteDataColumn("test_table", "field");
 
   // Verify it's gone
-  assertEquals(gpkg.getDataColumn("test_table", "field"), undefined);
+  assertEquals(await gpkg.getDataColumn("test_table", "field"), undefined);
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("Schema - Cannot add duplicate data column definition", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Cannot add duplicate data column definition", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.createFeatureTable({
+  await gpkg.createFeatureTable({
     tableName: "dup_test",
     geometryType: "POINT",
     srsId: 4326,
     columns: [{ name: "field", type: "TEXT" }],
   });
 
-  gpkg.addDataColumn({
+  await gpkg.addDataColumn({
     tableName: "dup_test",
     columnName: "field",
     title: "First",
   });
 
-  assertThrows(
-    () => {
-      gpkg.addDataColumn({
+  await assertRejects(
+    async () => {
+      await gpkg.addDataColumn({
         tableName: "dup_test",
         columnName: "field",
         title: "Second",
@@ -196,15 +196,15 @@ Deno.test("Schema - Cannot add duplicate data column definition", () => {
     "already exists",
   );
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("Schema - Cannot add data column for non-existent table", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Cannot add data column for non-existent table", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  assertThrows(
-    () => {
-      gpkg.addDataColumn({
+  await assertRejects(
+    async () => {
+      await gpkg.addDataColumn({
         tableName: "nonexistent",
         columnName: "field",
         title: "Test",
@@ -214,22 +214,23 @@ Deno.test("Schema - Cannot add data column for non-existent table", () => {
     "not found in gpkg_contents",
   );
 
-  gpkg.close();
+  await gpkg.close();
 });
 
 // ============== Range Constraints ==============
 
-Deno.test("Schema - Add and get range constraint", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Add and get range constraint", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.addRangeConstraint({
+  await gpkg.addRangeConstraint({
+    constraintType: "range",
     constraintName: "percent",
     min: 0,
     max: 100,
     description: "Percentage value between 0 and 100",
   });
 
-  const constraint = gpkg.getRangeConstraint("percent");
+  const constraint = await gpkg.getRangeConstraint("percent");
   assertExists(constraint);
   assertEquals(constraint.constraintType, "range");
   assertEquals(constraint.min, 0);
@@ -238,66 +239,70 @@ Deno.test("Schema - Add and get range constraint", () => {
   assertEquals(constraint.maxIsInclusive, true);
   assertEquals(constraint.description, "Percentage value between 0 and 100");
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("Schema - Range constraint with exclusive bounds", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Range constraint with exclusive bounds", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.addRangeConstraint({
+  await gpkg.addRangeConstraint({
+    constraintType: "range",
     constraintName: "positive",
     min: 0,
     minIsInclusive: false,
     description: "Strictly positive numbers",
   });
 
-  const constraint = gpkg.getRangeConstraint("positive");
+  const constraint = await gpkg.getRangeConstraint("positive");
   assertExists(constraint);
   assertEquals(constraint.min, 0);
   assertEquals(constraint.minIsInclusive, false);
   assertEquals(constraint.max, undefined);
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("Schema - Range constraint min only", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Range constraint min only", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.addRangeConstraint({
+  await gpkg.addRangeConstraint({
+    constraintType: "range",
     constraintName: "min_only",
     min: 10,
   });
 
-  const constraint = gpkg.getRangeConstraint("min_only");
+  const constraint = await gpkg.getRangeConstraint("min_only");
   assertExists(constraint);
   assertEquals(constraint.min, 10);
   assertEquals(constraint.max, undefined);
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("Schema - Range constraint max only", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Range constraint max only", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.addRangeConstraint({
+  await gpkg.addRangeConstraint({
+    constraintType: "range",
     constraintName: "max_only",
     max: 1000,
   });
 
-  const constraint = gpkg.getRangeConstraint("max_only");
+  const constraint = await gpkg.getRangeConstraint("max_only");
   assertExists(constraint);
   assertEquals(constraint.min, undefined);
   assertEquals(constraint.max, 1000);
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("Schema - Range constraint must have min or max", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Range constraint must have min or max", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  assertThrows(
-    () => {
-      gpkg.addRangeConstraint({
+  await assertRejects(
+    async () => {
+      await gpkg.addRangeConstraint({
+        constraintType: "range",
         constraintName: "invalid",
       });
     },
@@ -305,58 +310,64 @@ Deno.test("Schema - Range constraint must have min or max", () => {
     "must have at least min or max",
   );
 
-  gpkg.close();
+  await gpkg.close();
 });
 
 // ============== Enum Constraints ==============
 
-Deno.test("Schema - Add enum constraint with multiple values", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Add enum constraint with multiple values", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.addEnumConstraint({
+  await gpkg.addEnumConstraint({
+    constraintType: "enum",
     constraintName: "status",
     value: "active",
   });
 
-  gpkg.addEnumConstraint({
+  await gpkg.addEnumConstraint({
+    constraintType: "enum",
     constraintName: "status",
     value: "inactive",
   });
 
-  gpkg.addEnumConstraint({
+  await gpkg.addEnumConstraint({
+    constraintType: "enum",
     constraintName: "status",
     value: "pending",
   });
 
-  const values = gpkg.getEnumValues("status");
+  const values = await gpkg.getEnumValues("status");
   assertEquals(values.length, 3);
   assertEquals(values.includes("active"), true);
   assertEquals(values.includes("inactive"), true);
   assertEquals(values.includes("pending"), true);
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("Schema - Get constraints returns all entries", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Get constraints returns all entries", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.addEnumConstraint({
+  await gpkg.addEnumConstraint({
+    constraintType: "enum",
     constraintName: "priority",
     value: "low",
     description: "Low priority",
   });
 
-  gpkg.addEnumConstraint({
+  await gpkg.addEnumConstraint({
+    constraintType: "enum",
     constraintName: "priority",
     value: "medium",
   });
 
-  gpkg.addEnumConstraint({
+  await gpkg.addEnumConstraint({
+    constraintType: "enum",
     constraintName: "priority",
     value: "high",
   });
 
-  const constraints = gpkg.getConstraints("priority");
+  const constraints = await gpkg.getConstraints("priority");
   assertEquals(constraints.length, 3);
 
   for (const c of constraints) {
@@ -364,40 +375,49 @@ Deno.test("Schema - Get constraints returns all entries", () => {
     assertEquals(c.constraintName, "priority");
   }
 
-  gpkg.close();
+  await gpkg.close();
 });
 
 // ============== Glob Constraints ==============
 
-Deno.test("Schema - Add glob constraint", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Add glob constraint", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.addGlobConstraint({
+  await gpkg.addGlobConstraint({
+    constraintType: "glob",
     constraintName: "email_pattern",
     value: "*@*.*",
     description: "Simple email pattern",
   });
 
-  const constraints = gpkg.getConstraints("email_pattern");
+  const constraints = await gpkg.getConstraints("email_pattern");
   assertEquals(constraints.length, 1);
   assertEquals(constraints[0].constraintType, "glob");
   if (constraints[0].constraintType === "glob") {
     assertEquals(constraints[0].value, "*@*.*");
   }
 
-  gpkg.close();
+  await gpkg.close();
 });
 
 // ============== Data Column with Constraint ==============
 
-Deno.test("Schema - Data column with constraint reference", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Data column with constraint reference", async () => {
+  const gpkg = await GeoPackage.memory();
 
   // Create constraint first
-  gpkg.addEnumConstraint({ constraintName: "yesno", value: "yes" });
-  gpkg.addEnumConstraint({ constraintName: "yesno", value: "no" });
+  await gpkg.addEnumConstraint({
+    constraintName: "yesno",
+    constraintType: "enum",
+    value: "yes",
+  });
+  await gpkg.addEnumConstraint({
+    constraintName: "yesno",
+    constraintType: "enum",
+    value: "no",
+  });
 
-  gpkg.createFeatureTable({
+  await gpkg.createFeatureTable({
     tableName: "survey",
     geometryType: "POINT",
     srsId: 4326,
@@ -405,33 +425,33 @@ Deno.test("Schema - Data column with constraint reference", () => {
   });
 
   // Add data column with constraint
-  gpkg.addDataColumn({
+  await gpkg.addDataColumn({
     tableName: "survey",
     columnName: "response",
     title: "Survey Response",
     constraintName: "yesno",
   });
 
-  const col = gpkg.getDataColumn("survey", "response");
+  const col = await gpkg.getDataColumn("survey", "response");
   assertExists(col);
   assertEquals(col.constraintName, "yesno");
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("Schema - Cannot add data column with non-existent constraint", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Cannot add data column with non-existent constraint", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.createFeatureTable({
+  await gpkg.createFeatureTable({
     tableName: "test",
     geometryType: "POINT",
     srsId: 4326,
     columns: [{ name: "field", type: "TEXT" }],
   });
 
-  assertThrows(
-    () => {
-      gpkg.addDataColumn({
+  await assertRejects(
+    async () => {
+      await gpkg.addDataColumn({
         tableName: "test",
         columnName: "field",
         constraintName: "nonexistent",
@@ -441,110 +461,137 @@ Deno.test("Schema - Cannot add data column with non-existent constraint", () => 
     "not found",
   );
 
-  gpkg.close();
+  await gpkg.close();
 });
 
 // ============== Constraint Deletion ==============
 
-Deno.test("Schema - Delete constraint", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Delete constraint", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.addEnumConstraint({ constraintName: "to_delete", value: "a" });
-  gpkg.addEnumConstraint({ constraintName: "to_delete", value: "b" });
+  await gpkg.addEnumConstraint({
+    constraintName: "to_delete",
+    constraintType: "enum",
+    value: "a",
+  });
+  await gpkg.addEnumConstraint({
+    constraintName: "to_delete",
+    constraintType: "enum",
+    value: "b",
+  });
 
   // Verify exists
-  assertEquals(gpkg.getEnumValues("to_delete").length, 2);
+  assertEquals((await gpkg.getEnumValues("to_delete")).length, 2);
 
   // Delete
-  gpkg.deleteConstraint("to_delete");
+  await gpkg.deleteConstraint("to_delete");
 
   // Verify gone
-  assertEquals(gpkg.getConstraints("to_delete").length, 0);
+  assertEquals((await gpkg.getConstraints("to_delete")).length, 0);
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("Schema - Cannot delete constraint in use", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Cannot delete constraint in use", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.addEnumConstraint({ constraintName: "in_use", value: "x" });
+  await gpkg.addEnumConstraint({
+    constraintName: "in_use",
+    constraintType: "enum",
+    value: "x",
+  });
 
-  gpkg.createFeatureTable({
+  await gpkg.createFeatureTable({
     tableName: "using_constraint",
     geometryType: "POINT",
     srsId: 4326,
     columns: [{ name: "field", type: "TEXT" }],
   });
 
-  gpkg.addDataColumn({
+  await gpkg.addDataColumn({
     tableName: "using_constraint",
     columnName: "field",
     constraintName: "in_use",
   });
 
-  assertThrows(
-    () => {
-      gpkg.deleteConstraint("in_use");
+  await assertRejects(
+    async () => {
+      await gpkg.deleteConstraint("in_use");
     },
     Error,
     "referenced by",
   );
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("Schema - List all constraint names", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - List all constraint names", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.addRangeConstraint({ constraintName: "range1", min: 0, max: 100 });
-  gpkg.addEnumConstraint({ constraintName: "enum1", value: "a" });
-  gpkg.addGlobConstraint({ constraintName: "glob1", value: "*" });
+  await gpkg.addRangeConstraint({
+    constraintName: "range1",
+    constraintType: "range",
+    min: 0,
+    max: 100,
+  });
+  await gpkg.addEnumConstraint({
+    constraintName: "enum1",
+    constraintType: "enum",
+    value: "a",
+  });
+  await gpkg.addGlobConstraint({
+    constraintName: "glob1",
+    constraintType: "glob",
+    value: "*",
+  });
 
-  const names = gpkg.listConstraintNames();
+  const names = await gpkg.listConstraintNames();
   assertEquals(names.length, 3);
   assertEquals(names.includes("range1"), true);
   assertEquals(names.includes("enum1"), true);
   assertEquals(names.includes("glob1"), true);
 
-  gpkg.close();
+  await gpkg.close();
 });
 
 // ============== Validation ==============
 
-Deno.test("Schema - Validate value against range constraint", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Validate value against range constraint", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.addRangeConstraint({
+  await gpkg.addRangeConstraint({
+    constraintType: "range",
     constraintName: "percent",
     min: 0,
     max: 100,
   });
 
   // Valid values
-  assertEquals(gpkg.validateValueAgainstConstraint("percent", 0), true);
-  assertEquals(gpkg.validateValueAgainstConstraint("percent", 50), true);
-  assertEquals(gpkg.validateValueAgainstConstraint("percent", 100), true);
+  assertEquals(await gpkg.validateValueAgainstConstraint("percent", 0), true);
+  assertEquals(await gpkg.validateValueAgainstConstraint("percent", 50), true);
+  assertEquals(await gpkg.validateValueAgainstConstraint("percent", 100), true);
 
   // Invalid values
-  assertThrows(
-    () => gpkg.validateValueAgainstConstraint("percent", -1),
+  await assertRejects(
+    async () => await gpkg.validateValueAgainstConstraint("percent", -1),
     Error,
     "less than minimum",
   );
 
-  assertThrows(
-    () => gpkg.validateValueAgainstConstraint("percent", 101),
+  await assertRejects(
+    async () => await gpkg.validateValueAgainstConstraint("percent", 101),
     Error,
     "greater than maximum",
   );
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("Schema - Validate value against exclusive range", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Validate value against exclusive range", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.addRangeConstraint({
+  await gpkg.addRangeConstraint({
+    constraintType: "range",
     constraintName: "exclusive",
     min: 0,
     minIsInclusive: false,
@@ -553,146 +600,183 @@ Deno.test("Schema - Validate value against exclusive range", () => {
   });
 
   // Valid values
-  assertEquals(gpkg.validateValueAgainstConstraint("exclusive", 0.1), true);
-  assertEquals(gpkg.validateValueAgainstConstraint("exclusive", 5), true);
-  assertEquals(gpkg.validateValueAgainstConstraint("exclusive", 9.9), true);
+  assertEquals(
+    await gpkg.validateValueAgainstConstraint("exclusive", 0.1),
+    true,
+  );
+  assertEquals(await gpkg.validateValueAgainstConstraint("exclusive", 5), true);
+  assertEquals(
+    await gpkg.validateValueAgainstConstraint("exclusive", 9.9),
+    true,
+  );
 
   // Invalid - boundary values not allowed
-  assertThrows(
-    () => gpkg.validateValueAgainstConstraint("exclusive", 0),
+  await assertRejects(
+    async () => await gpkg.validateValueAgainstConstraint("exclusive", 0),
     Error,
     "must be greater than",
   );
 
-  assertThrows(
-    () => gpkg.validateValueAgainstConstraint("exclusive", 10),
+  await assertRejects(
+    async () => await gpkg.validateValueAgainstConstraint("exclusive", 10),
     Error,
     "must be less than",
   );
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("Schema - Validate value against enum constraint", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Validate value against enum constraint", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.addEnumConstraint({ constraintName: "colors", value: "red" });
-  gpkg.addEnumConstraint({ constraintName: "colors", value: "green" });
-  gpkg.addEnumConstraint({ constraintName: "colors", value: "blue" });
+  await gpkg.addEnumConstraint({
+    constraintName: "colors",
+    constraintType: "enum",
+    value: "red",
+  });
+  await gpkg.addEnumConstraint({
+    constraintName: "colors",
+    constraintType: "enum",
+    value: "green",
+  });
+  await gpkg.addEnumConstraint({
+    constraintName: "colors",
+    constraintType: "enum",
+    value: "blue",
+  });
 
   // Valid values
-  assertEquals(gpkg.validateValueAgainstConstraint("colors", "red"), true);
-  assertEquals(gpkg.validateValueAgainstConstraint("colors", "green"), true);
-  assertEquals(gpkg.validateValueAgainstConstraint("colors", "blue"), true);
+  assertEquals(
+    await gpkg.validateValueAgainstConstraint("colors", "red"),
+    true,
+  );
+  assertEquals(
+    await gpkg.validateValueAgainstConstraint("colors", "green"),
+    true,
+  );
+  assertEquals(
+    await gpkg.validateValueAgainstConstraint("colors", "blue"),
+    true,
+  );
 
   // Invalid value
-  assertThrows(
-    () => gpkg.validateValueAgainstConstraint("colors", "yellow"),
+  await assertRejects(
+    async () => await gpkg.validateValueAgainstConstraint("colors", "yellow"),
     Error,
     "not in allowed values",
   );
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("Schema - Validate value against glob constraint", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Validate value against glob constraint", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.addGlobConstraint({
+  await gpkg.addGlobConstraint({
+    constraintType: "glob",
     constraintName: "phone",
     value: "???-???-????",
   });
 
   // Valid values
   assertEquals(
-    gpkg.validateValueAgainstConstraint("phone", "123-456-7890"),
+    await gpkg.validateValueAgainstConstraint("phone", "123-456-7890"),
     true,
   );
   assertEquals(
-    gpkg.validateValueAgainstConstraint("phone", "000-000-0000"),
+    await gpkg.validateValueAgainstConstraint("phone", "000-000-0000"),
     true,
   );
 
   // Invalid values
-  assertThrows(
-    () => gpkg.validateValueAgainstConstraint("phone", "12-345-6789"),
+  await assertRejects(
+    async () =>
+      await gpkg.validateValueAgainstConstraint("phone", "12-345-6789"),
     Error,
     "does not match pattern",
   );
 
-  assertThrows(
-    () => gpkg.validateValueAgainstConstraint("phone", "1234567890"),
+  await assertRejects(
+    async () =>
+      await gpkg.validateValueAgainstConstraint("phone", "1234567890"),
     Error,
     "does not match pattern",
   );
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("Schema - Validate with wildcard glob", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Validate with wildcard glob", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.addGlobConstraint({
+  await gpkg.addGlobConstraint({
+    constraintType: "glob",
     constraintName: "prefix",
     value: "ID-*",
   });
 
   // Valid values
-  assertEquals(gpkg.validateValueAgainstConstraint("prefix", "ID-123"), true);
   assertEquals(
-    gpkg.validateValueAgainstConstraint("prefix", "ID-abc-xyz"),
+    await gpkg.validateValueAgainstConstraint("prefix", "ID-123"),
     true,
   );
-  assertEquals(gpkg.validateValueAgainstConstraint("prefix", "ID-"), true);
+  assertEquals(
+    await gpkg.validateValueAgainstConstraint("prefix", "ID-abc-xyz"),
+    true,
+  );
+  assertEquals(
+    await gpkg.validateValueAgainstConstraint("prefix", "ID-"),
+    true,
+  );
 
   // Invalid values
-  assertThrows(
-    () => gpkg.validateValueAgainstConstraint("prefix", "id-123"),
+  await assertRejects(
+    async () => await gpkg.validateValueAgainstConstraint("prefix", "id-123"),
     Error,
     "does not match pattern",
   );
 
-  assertThrows(
-    () => gpkg.validateValueAgainstConstraint("prefix", "123-ID"),
+  await assertRejects(
+    async () => await gpkg.validateValueAgainstConstraint("prefix", "123-ID"),
     Error,
     "does not match pattern",
   );
 
-  gpkg.close();
+  await gpkg.close();
 });
 
 // ============== Extension Registration ==============
 
-Deno.test("Schema - Extension registered when adding data column", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Extension registered when adding data column", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.createFeatureTable({
+  await gpkg.createFeatureTable({
     tableName: "ext_test",
     geometryType: "POINT",
     srsId: 4326,
     columns: [{ name: "field", type: "TEXT" }],
   });
 
-  gpkg.addDataColumn({
+  await gpkg.addDataColumn({
     tableName: "ext_test",
     columnName: "field",
     title: "Test Field",
   });
 
   // Check extension is registered
-  const ext = gpkg.getExtension("gpkg_schema", "ext_test", "field");
+  const ext = await gpkg.getExtension("gpkg_schema", "ext_test", "field");
   assertExists(ext);
-  assertEquals(ext.scope, "read-write");
+  assertEquals(ext!.scope, "read-write");
 
-  gpkg.close();
+  await gpkg.close();
 });
 
 // ============== Attribute Table Schema ==============
 
-Deno.test("Schema - Works with attribute tables", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Works with attribute tables", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.createAttributeTable({
+  await gpkg.createAttributeTable({
     tableName: "settings",
     columns: [
       { name: "key", type: "TEXT" },
@@ -700,32 +784,32 @@ Deno.test("Schema - Works with attribute tables", () => {
     ],
   });
 
-  gpkg.addDataColumn({
+  await gpkg.addDataColumn({
     tableName: "settings",
     columnName: "key",
     title: "Setting Key",
     description: "Unique identifier for the setting",
   });
 
-  gpkg.addDataColumn({
+  await gpkg.addDataColumn({
     tableName: "settings",
     columnName: "value",
     title: "Setting Value",
     description: "The value of the setting",
   });
 
-  const columns = gpkg.listDataColumns("settings");
+  const columns = await gpkg.listDataColumns("settings");
   assertEquals(columns.length, 2);
 
-  gpkg.close();
+  await gpkg.close();
 });
 
 // ============== Edge Cases ==============
 
-Deno.test("Schema - Empty string values in data column", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Empty string values in data column", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.createFeatureTable({
+  await gpkg.createFeatureTable({
     tableName: "empty_test",
     geometryType: "POINT",
     srsId: 4326,
@@ -733,68 +817,87 @@ Deno.test("Schema - Empty string values in data column", () => {
   });
 
   // Add with minimal properties
-  gpkg.addDataColumn({
+  await gpkg.addDataColumn({
     tableName: "empty_test",
     columnName: "field",
   });
 
-  const col = gpkg.getDataColumn("empty_test", "field");
+  const col = await gpkg.getDataColumn("empty_test", "field");
   assertExists(col);
   assertEquals(col.name, undefined);
   assertEquals(col.title, undefined);
   assertEquals(col.description, undefined);
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("Schema - Negative range values", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Negative range values", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.addRangeConstraint({
+  await gpkg.addRangeConstraint({
+    constraintType: "range",
     constraintName: "temperature",
     min: -273.15,
     max: 1000,
     description: "Temperature in Celsius",
   });
 
-  assertEquals(gpkg.validateValueAgainstConstraint("temperature", -100), true);
   assertEquals(
-    gpkg.validateValueAgainstConstraint("temperature", -273.15),
+    await gpkg.validateValueAgainstConstraint("temperature", -100),
+    true,
+  );
+  assertEquals(
+    await gpkg.validateValueAgainstConstraint("temperature", -273.15),
     true,
   );
 
-  assertThrows(
-    () => gpkg.validateValueAgainstConstraint("temperature", -300),
+  await assertRejects(
+    async () => await gpkg.validateValueAgainstConstraint("temperature", -300),
     Error,
     "less than minimum",
   );
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("Schema - Decimal range values", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Decimal range values", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.addRangeConstraint({
+  await gpkg.addRangeConstraint({
+    constraintType: "range",
     constraintName: "latitude",
     min: -90.0,
     max: 90.0,
   });
 
-  assertEquals(gpkg.validateValueAgainstConstraint("latitude", 45.5), true);
-  assertEquals(gpkg.validateValueAgainstConstraint("latitude", -89.999), true);
+  assertEquals(
+    await gpkg.validateValueAgainstConstraint("latitude", 45.5),
+    true,
+  );
+  assertEquals(
+    await gpkg.validateValueAgainstConstraint("latitude", -89.999),
+    true,
+  );
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("Schema - Update data column to add constraint", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Update data column to add constraint", async () => {
+  const gpkg = await GeoPackage.memory();
 
   // Create constraint
-  gpkg.addEnumConstraint({ constraintName: "level", value: "low" });
-  gpkg.addEnumConstraint({ constraintName: "level", value: "high" });
+  await gpkg.addEnumConstraint({
+    constraintName: "level",
+    constraintType: "enum",
+    value: "low",
+  });
+  await gpkg.addEnumConstraint({
+    constraintName: "level",
+    constraintType: "enum",
+    value: "high",
+  });
 
-  gpkg.createFeatureTable({
+  await gpkg.createFeatureTable({
     tableName: "update_test",
     geometryType: "POINT",
     srsId: 4326,
@@ -802,7 +905,7 @@ Deno.test("Schema - Update data column to add constraint", () => {
   });
 
   // Add without constraint
-  gpkg.addDataColumn({
+  await gpkg.addDataColumn({
     tableName: "update_test",
     columnName: "priority",
     title: "Priority",
@@ -816,26 +919,30 @@ Deno.test("Schema - Update data column to add constraint", () => {
     constraintName: "level",
   });
 
-  const col = gpkg.getDataColumn("update_test", "priority");
+  const col = await gpkg.getDataColumn("update_test", "priority");
   assertExists(col);
   assertEquals(col.constraintName, "level");
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("Schema - Update data column to remove constraint", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Schema - Update data column to remove constraint", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.addEnumConstraint({ constraintName: "removable", value: "x" });
+  await gpkg.addEnumConstraint({
+    constraintName: "removable",
+    constraintType: "enum",
+    value: "x",
+  });
 
-  gpkg.createFeatureTable({
+  await gpkg.createFeatureTable({
     tableName: "remove_test",
     geometryType: "POINT",
     srsId: 4326,
     columns: [{ name: "field", type: "TEXT" }],
   });
 
-  gpkg.addDataColumn({
+  await gpkg.addDataColumn({
     tableName: "remove_test",
     columnName: "field",
     constraintName: "removable",
@@ -849,12 +956,12 @@ Deno.test("Schema - Update data column to remove constraint", () => {
     // constraintName not specified = removed
   });
 
-  const col = gpkg.getDataColumn("remove_test", "field");
+  const col = await gpkg.getDataColumn("remove_test", "field");
   assertExists(col);
   assertEquals(col.constraintName, undefined);
 
   // Now we can delete the constraint since it's not in use
   gpkg.deleteConstraint("removable");
 
-  gpkg.close();
+  await gpkg.close();
 });

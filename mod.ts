@@ -3,47 +3,65 @@
  *
  * This package provides a minimal, focused implementation of the OGC GeoPackage
  * specification, built on top of jsr:@db/sqlite. It follows a lightweight approach
- * similar to @nullstyle/ustate, focusing on core functionality without unnecessary
- * dependencies.
+ * focusing on core functionality without unnecessary dependencies.
+ *
+ * Features include:
+ * - Async API with Promise-based operations
+ * - Feature tables with geometry validation
+ * - R-tree spatial indexing
+ * - Attribute (non-spatial) tables
+ * - GeoJSON import/export
+ * - Tile pyramids with format validation
+ * - Schema extension with constraints
+ * - Batch operations with progress callbacks
  *
  * @module
  *
- * @example
+ * @example Basic Usage
  * ```ts
  * import { GeoPackage } from "jsr:@nullstyle/gpkg";
  *
- * // Create or open a GeoPackage
- * const gpkg = new GeoPackage("mydata.gpkg");
+ * // Open or create a GeoPackage
+ * const gpkg = await GeoPackage.open("mydata.gpkg");
  *
- * // Create a feature table
- * gpkg.createFeatureTable({
+ * await gpkg.createFeatureTable({
  *   tableName: "points",
  *   geometryType: "POINT",
  *   srsId: 4326,
- *   columns: [
- *     { name: "name", type: "TEXT" },
- *     { name: "value", type: "REAL" }
- *   ]
+ *   columns: [{ name: "name", type: "TEXT" }]
  * });
  *
- * // Insert a feature
- * gpkg.insertFeature("points", {
+ * await gpkg.insertFeature("points", {
  *   geometry: { type: "Point", coordinates: [-122.4, 37.8] },
- *   properties: { name: "San Francisco", value: 42.5 }
+ *   properties: { name: "San Francisco" }
  * });
  *
- * // Query features with parameterized WHERE clause
- * const features = gpkg.queryFeatures("points", {
- *   where: { sql: "value > ?", params: [40] }
+ * // Query with parameterized WHERE (SQL injection safe)
+ * const features = await gpkg.queryFeatures("points", {
+ *   where: { sql: "name = ?", params: ["San Francisco"] }
  * });
  *
- * // Close the database
- * gpkg.close();
+ * await gpkg.close();
+ * ```
+ *
+ * @example Batch Operations
+ * ```ts
+ * // Batch insert with progress tracking
+ * const ids = await gpkg.insertFeatures("points", manyFeatures, {
+ *   yieldEvery: 100,
+ *   onProgress: (done, total) => console.log(`${done}/${total}`)
+ * });
+ *
+ * // Async iteration
+ * for await (const feature of gpkg.iterateFeatures("points")) {
+ *   console.log(feature.id);
+ * }
  * ```
  */
 
-// Export main class
+// Export main class and batch options
 export { GeoPackage } from "./src/geopackage.ts";
+export type { BatchOptions } from "./src/geopackage.ts";
 
 // Export types
 export type {

@@ -2,7 +2,7 @@
  * Tile image format validation unit tests.
  */
 
-import { assertEquals, assertExists, assertThrows } from "@std/assert";
+import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert";
 import { detectTileFormat, GeoPackage, validateTileData } from "../mod.ts";
 
 // Sample image magic bytes for testing
@@ -80,62 +80,62 @@ const INVALID_DATA = new Uint8Array([
 
 // ============== Format Detection ==============
 
-Deno.test("Tiles - Detect PNG format", () => {
+Deno.test("Tiles - Detect PNG format", async () => {
   const format = detectTileFormat(PNG_HEADER);
   assertEquals(format, "png");
 });
 
-Deno.test("Tiles - Detect JPEG format", () => {
+Deno.test("Tiles - Detect JPEG format", async () => {
   const format = detectTileFormat(JPEG_HEADER);
   assertEquals(format, "jpeg");
 });
 
-Deno.test("Tiles - Detect WebP format", () => {
+Deno.test("Tiles - Detect WebP format", async () => {
   const format = detectTileFormat(WEBP_HEADER);
   assertEquals(format, "webp");
 });
 
-Deno.test("Tiles - Detect unknown format", () => {
+Deno.test("Tiles - Detect unknown format", async () => {
   const format = detectTileFormat(INVALID_DATA);
   assertEquals(format, "unknown");
 });
 
-Deno.test("Tiles - Detect format with empty data", () => {
+Deno.test("Tiles - Detect format with empty data", async () => {
   const format = detectTileFormat(new Uint8Array(0));
   assertEquals(format, "unknown");
 });
 
-Deno.test("Tiles - Detect format with too short data", () => {
+Deno.test("Tiles - Detect format with too short data", async () => {
   const format = detectTileFormat(new Uint8Array([0x89, 0x50]));
   assertEquals(format, "unknown");
 });
 
 // ============== Validation ==============
 
-Deno.test("Tiles - Validate PNG data", () => {
+Deno.test("Tiles - Validate PNG data", async () => {
   const format = validateTileData(PNG_HEADER, { validateFormat: true });
   assertEquals(format, "png");
 });
 
-Deno.test("Tiles - Validate JPEG data", () => {
+Deno.test("Tiles - Validate JPEG data", async () => {
   const format = validateTileData(JPEG_HEADER, { validateFormat: true });
   assertEquals(format, "jpeg");
 });
 
-Deno.test("Tiles - Validate WebP data", () => {
+Deno.test("Tiles - Validate WebP data", async () => {
   const format = validateTileData(WEBP_HEADER, { validateFormat: true });
   assertEquals(format, "webp");
 });
 
-Deno.test("Tiles - Validation rejects unknown format", () => {
-  assertThrows(
-    () => validateTileData(INVALID_DATA, { validateFormat: true }),
+Deno.test("Tiles - Validation rejects unknown format", async () => {
+  await assertRejects(
+    async () => validateTileData(INVALID_DATA, { validateFormat: true }),
     Error,
     "Unknown tile image format",
   );
 });
 
-Deno.test("Tiles - Validation with restricted formats", () => {
+Deno.test("Tiles - Validation with restricted formats", async () => {
   // Only allow PNG
   const format = validateTileData(PNG_HEADER, {
     validateFormat: true,
@@ -144,8 +144,8 @@ Deno.test("Tiles - Validation with restricted formats", () => {
   assertEquals(format, "png");
 
   // JPEG should be rejected
-  assertThrows(
-    () =>
+  await assertRejects(
+    async () =>
       validateTileData(JPEG_HEADER, {
         validateFormat: true,
         allowedFormats: ["png"],
@@ -155,7 +155,7 @@ Deno.test("Tiles - Validation with restricted formats", () => {
   );
 });
 
-Deno.test("Tiles - Validation without format check", () => {
+Deno.test("Tiles - Validation without format check", async () => {
   // Should return format but not throw even for unknown
   const format = validateTileData(INVALID_DATA, { validateFormat: false });
   assertEquals(format, "unknown");
@@ -163,10 +163,10 @@ Deno.test("Tiles - Validation without format check", () => {
 
 // ============== Insert with Validation ==============
 
-Deno.test("Tiles - Insert tile with format validation", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Tiles - Insert tile with format validation", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.createTileMatrixSet({
+  await gpkg.createTileMatrixSet({
     tableName: "validated_tiles",
     srsId: 3857,
     minX: -180,
@@ -175,7 +175,7 @@ Deno.test("Tiles - Insert tile with format validation", () => {
     maxY: 85,
   });
 
-  gpkg.addTileMatrix({
+  await gpkg.addTileMatrix({
     tableName: "validated_tiles",
     zoomLevel: 0,
     matrixWidth: 1,
@@ -187,7 +187,7 @@ Deno.test("Tiles - Insert tile with format validation", () => {
   });
 
   // Insert valid PNG
-  const id = gpkg.insertTile(
+  const id = await gpkg.insertTile(
     "validated_tiles",
     {
       zoomLevel: 0,
@@ -201,16 +201,16 @@ Deno.test("Tiles - Insert tile with format validation", () => {
   assertEquals(typeof id, "number");
 
   // Verify tile was inserted
-  const tile = gpkg.getTile("validated_tiles", { zoom: 0, column: 0, row: 0 });
+  const tile = await gpkg.getTile("validated_tiles", { zoom: 0, column: 0, row: 0 });
   assertExists(tile);
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("Tiles - Insert tile rejects invalid format when validation enabled", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Tiles - Insert tile rejects invalid format when validation enabled", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.createTileMatrixSet({
+  await gpkg.createTileMatrixSet({
     tableName: "strict_tiles",
     srsId: 3857,
     minX: -180,
@@ -219,7 +219,7 @@ Deno.test("Tiles - Insert tile rejects invalid format when validation enabled", 
     maxY: 85,
   });
 
-  gpkg.addTileMatrix({
+  await gpkg.addTileMatrix({
     tableName: "strict_tiles",
     zoomLevel: 0,
     matrixWidth: 1,
@@ -231,9 +231,9 @@ Deno.test("Tiles - Insert tile rejects invalid format when validation enabled", 
   });
 
   // Try to insert invalid data with validation
-  assertThrows(
-    () =>
-      gpkg.insertTile(
+  await assertRejects(
+    async () =>
+      await gpkg.insertTile(
         "strict_tiles",
         {
           zoomLevel: 0,
@@ -247,13 +247,13 @@ Deno.test("Tiles - Insert tile rejects invalid format when validation enabled", 
     "Unknown tile image format",
   );
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("Tiles - Insert tile accepts any data without validation", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Tiles - Insert tile accepts any data without validation", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.createTileMatrixSet({
+  await gpkg.createTileMatrixSet({
     tableName: "lenient_tiles",
     srsId: 3857,
     minX: -180,
@@ -262,7 +262,7 @@ Deno.test("Tiles - Insert tile accepts any data without validation", () => {
     maxY: 85,
   });
 
-  gpkg.addTileMatrix({
+  await gpkg.addTileMatrix({
     tableName: "lenient_tiles",
     zoomLevel: 0,
     matrixWidth: 1,
@@ -274,7 +274,7 @@ Deno.test("Tiles - Insert tile accepts any data without validation", () => {
   });
 
   // Insert arbitrary data without validation (default behavior)
-  const id = gpkg.insertTile("lenient_tiles", {
+  const id = await gpkg.insertTile("lenient_tiles", {
     zoomLevel: 0,
     tileColumn: 0,
     tileRow: 0,
@@ -283,13 +283,13 @@ Deno.test("Tiles - Insert tile accepts any data without validation", () => {
 
   assertEquals(typeof id, "number");
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("Tiles - Insert with format restriction", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Tiles - Insert with format restriction", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.createTileMatrixSet({
+  await gpkg.createTileMatrixSet({
     tableName: "png_only",
     srsId: 3857,
     minX: -180,
@@ -298,7 +298,7 @@ Deno.test("Tiles - Insert with format restriction", () => {
     maxY: 85,
   });
 
-  gpkg.addTileMatrix({
+  await gpkg.addTileMatrix({
     tableName: "png_only",
     zoomLevel: 0,
     matrixWidth: 2,
@@ -310,7 +310,7 @@ Deno.test("Tiles - Insert with format restriction", () => {
   });
 
   // PNG should be accepted
-  gpkg.insertTile(
+  await gpkg.insertTile(
     "png_only",
     {
       zoomLevel: 0,
@@ -322,9 +322,9 @@ Deno.test("Tiles - Insert with format restriction", () => {
   );
 
   // JPEG should be rejected
-  assertThrows(
-    () =>
-      gpkg.insertTile(
+  await assertRejects(
+    async () =>
+      await gpkg.insertTile(
         "png_only",
         {
           zoomLevel: 0,
@@ -338,39 +338,39 @@ Deno.test("Tiles - Insert with format restriction", () => {
     "not allowed",
   );
 
-  gpkg.close();
+  await gpkg.close();
 });
 
 // ============== GeoPackage Methods ==============
 
-Deno.test("Tiles - detectTileFormat method on GeoPackage", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Tiles - detectTileFormat method on GeoPackage", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  assertEquals(gpkg.detectTileFormat(PNG_HEADER), "png");
-  assertEquals(gpkg.detectTileFormat(JPEG_HEADER), "jpeg");
-  assertEquals(gpkg.detectTileFormat(WEBP_HEADER), "webp");
-  assertEquals(gpkg.detectTileFormat(INVALID_DATA), "unknown");
+  assertEquals(await gpkg.detectTileFormat(PNG_HEADER), "png");
+  assertEquals(await gpkg.detectTileFormat(JPEG_HEADER), "jpeg");
+  assertEquals(await gpkg.detectTileFormat(WEBP_HEADER), "webp");
+  assertEquals(await gpkg.detectTileFormat(INVALID_DATA), "unknown");
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("Tiles - validateTileData method on GeoPackage", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Tiles - validateTileData method on GeoPackage", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  assertEquals(gpkg.validateTileData(PNG_HEADER), "png");
+  assertEquals(await gpkg.validateTileData(PNG_HEADER), "png");
 
-  assertThrows(
-    () => gpkg.validateTileData(INVALID_DATA),
+  await assertRejects(
+    async () => await gpkg.validateTileData(INVALID_DATA),
     Error,
     "Unknown tile image format",
   );
 
-  gpkg.close();
+  await gpkg.close();
 });
 
 // ============== Edge Cases ==============
 
-Deno.test("Tiles - PNG with extra data after header", () => {
+Deno.test("Tiles - PNG with extra data after header", async () => {
   const pngWithExtraData = new Uint8Array(1000);
   pngWithExtraData.set(PNG_HEADER, 0);
   // Fill rest with random data
@@ -382,7 +382,7 @@ Deno.test("Tiles - PNG with extra data after header", () => {
   assertEquals(format, "png");
 });
 
-Deno.test("Tiles - JPEG variants", () => {
+Deno.test("Tiles - JPEG variants", async () => {
   // JPEG with different APP markers
   const jpegApp1 = new Uint8Array([
     0xff,
@@ -402,7 +402,7 @@ Deno.test("Tiles - JPEG variants", () => {
   assertEquals(detectTileFormat(jpegApp1), "jpeg");
 });
 
-Deno.test("Tiles - Almost valid headers", () => {
+Deno.test("Tiles - Almost valid headers", async () => {
   // PNG with one byte wrong
   const almostPng = new Uint8Array([
     0x89,
@@ -440,7 +440,7 @@ Deno.test("Tiles - Almost valid headers", () => {
   assertEquals(detectTileFormat(almostJpeg), "unknown");
 });
 
-Deno.test("Tiles - WebP without WEBP signature", () => {
+Deno.test("Tiles - WebP without WEBP signature", async () => {
   // RIFF but not WEBP
   const riffNotWebp = new Uint8Array([
     0x52,
@@ -464,10 +464,10 @@ Deno.test("Tiles - WebP without WEBP signature", () => {
   assertEquals(detectTileFormat(riffNotWebp), "unknown");
 });
 
-Deno.test("Tiles - Multiple tile insertion with validation", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Tiles - Multiple tile insertion with validation", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.createTileMatrixSet({
+  await gpkg.createTileMatrixSet({
     tableName: "multi_tiles",
     srsId: 3857,
     minX: -180,
@@ -476,7 +476,7 @@ Deno.test("Tiles - Multiple tile insertion with validation", () => {
     maxY: 85,
   });
 
-  gpkg.addTileMatrix({
+  await gpkg.addTileMatrix({
     tableName: "multi_tiles",
     zoomLevel: 0,
     matrixWidth: 2,
@@ -488,41 +488,41 @@ Deno.test("Tiles - Multiple tile insertion with validation", () => {
   });
 
   // Insert different formats
-  gpkg.insertTile(
+  await gpkg.insertTile(
     "multi_tiles",
     { zoomLevel: 0, tileColumn: 0, tileRow: 0, tileData: PNG_HEADER },
     { validateFormat: true },
   );
 
-  gpkg.insertTile(
+  await gpkg.insertTile(
     "multi_tiles",
     { zoomLevel: 0, tileColumn: 1, tileRow: 0, tileData: JPEG_HEADER },
     { validateFormat: true },
   );
 
-  gpkg.insertTile(
+  await gpkg.insertTile(
     "multi_tiles",
     { zoomLevel: 0, tileColumn: 0, tileRow: 1, tileData: WEBP_HEADER },
     { validateFormat: true },
   );
 
   // Query tiles
-  const tiles = gpkg.queryTiles("multi_tiles");
+  const tiles = await gpkg.queryTiles("multi_tiles");
   assertEquals(tiles.length, 3);
 
   // Verify formats - tiles are ordered by (zoom, column, row)
   // So order is: (0,0,0)=PNG, (0,0,1)=WEBP, (0,1,0)=JPEG
-  assertEquals(gpkg.detectTileFormat(tiles[0].tileData), "png");
-  assertEquals(gpkg.detectTileFormat(tiles[1].tileData), "webp");
-  assertEquals(gpkg.detectTileFormat(tiles[2].tileData), "jpeg");
+  assertEquals(await gpkg.detectTileFormat(tiles[0].tileData), "png");
+  assertEquals(await gpkg.detectTileFormat(tiles[1].tileData), "webp");
+  assertEquals(await gpkg.detectTileFormat(tiles[2].tileData), "jpeg");
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("Tiles - Allow only WebP format", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("Tiles - Allow only WebP format", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.createTileMatrixSet({
+  await gpkg.createTileMatrixSet({
     tableName: "webp_only",
     srsId: 3857,
     minX: -180,
@@ -531,7 +531,7 @@ Deno.test("Tiles - Allow only WebP format", () => {
     maxY: 85,
   });
 
-  gpkg.addTileMatrix({
+  await gpkg.addTileMatrix({
     tableName: "webp_only",
     zoomLevel: 0,
     matrixWidth: 1,
@@ -543,7 +543,7 @@ Deno.test("Tiles - Allow only WebP format", () => {
   });
 
   // WebP should be accepted
-  gpkg.insertTile(
+  await gpkg.insertTile(
     "webp_only",
     {
       zoomLevel: 0,
@@ -554,9 +554,9 @@ Deno.test("Tiles - Allow only WebP format", () => {
     { validateFormat: true, allowedFormats: ["webp"] },
   );
 
-  const tile = gpkg.getTile("webp_only", { zoom: 0, column: 0, row: 0 });
+  const tile = await gpkg.getTile("webp_only", { zoom: 0, column: 0, row: 0 });
   assertExists(tile);
-  assertEquals(gpkg.detectTileFormat(tile.tileData), "webp");
+  assertEquals(await gpkg.detectTileFormat(tile.tileData), "webp");
 
-  gpkg.close();
+  await gpkg.close();
 });

@@ -12,12 +12,15 @@ extreme risk, here be dragons, etc.**
   functionality
 - **Type-Safe**: Comprehensive TypeScript types and interfaces
 - **Standards-Compliant**: Implements OGC GeoPackage 1.3 specification
+- **Async API**: Promise-based operations with batch support
 - **Feature Support**: Create and manage vector feature tables with geometries
-- **Tile Support**: Create and manage raster tile pyramids
-- **Geometry Encoding**: Full GeoPackage binary geometry format support
-  (WKB-based)
-- **Transaction Support**: ACID transactions for data integrity
-- **Extension Management**: Register and manage GeoPackage extensions
+- **Tile Support**: Create and manage raster tile pyramids with format validation
+- **Attribute Tables**: Non-spatial tables for metadata and related data
+- **Spatial Indexing**: R-tree index support for efficient bounding box queries
+- **GeoJSON Interop**: Import/export GeoJSON FeatureCollections
+- **Schema Extension**: Column metadata with constraints (range, enum, glob)
+- **Geometry Validation**: Type and dimension (Z/M) enforcement on insert
+- **SQL Injection Safe**: Parameterized queries throughout
 
 ## Installation
 
@@ -33,55 +36,211 @@ import { GeoPackage } from "jsr:@nullstyle/gpkg";
 
 ## Quick Start
 
-### Create a GeoPackage and Add Features
+### Basic Usage
 
 ```typescript
 import { GeoPackage } from "jsr:@nullstyle/gpkg";
 
-// Create or open a GeoPackage
-const gpkg = new GeoPackage("mydata.gpkg");
+// Open or create a GeoPackage
+const gpkg = await GeoPackage.open("mydata.gpkg");
 
 // Create a feature table
-gpkg.createFeatureTable({
+await gpkg.createFeatureTable({
   tableName: "cities",
   geometryType: "POINT",
   srsId: 4326, // WGS 84
   columns: [
     { name: "name", type: "TEXT", notNull: true },
     { name: "population", type: "INTEGER" },
-    { name: "country", type: "TEXT" },
   ],
 });
 
 // Insert features
-gpkg.insertFeature("cities", {
+await gpkg.insertFeature("cities", {
   geometry: { type: "Point", coordinates: [-122.4194, 37.7749] },
-  properties: {
-    name: "San Francisco",
-    population: 873965,
-    country: "USA",
-  },
+  properties: { name: "San Francisco", population: 873965 },
 });
 
-gpkg.insertFeature("cities", {
-  geometry: { type: "Point", coordinates: [-0.1276, 51.5074] },
-  properties: {
-    name: "London",
-    population: 8982000,
-    country: "UK",
-  },
-});
-
-// Query features
-const largeCities = gpkg.queryFeatures("cities", {
-  where: "population > 1000000",
+// Query with parameterized WHERE clause (SQL injection safe)
+const largeCities = await gpkg.queryFeatures("cities", {
+  where: { sql: "population > ?", params: [1000000] },
   orderBy: "population DESC",
 });
 
-console.log(`Found ${largeCities.length} large cities`);
-
 // Close the database
-gpkg.close();
+await gpkg.close();
+```
+
+### Batch Operations
+
+```typescript
+import { GeoPackage } from "jsr:@nullstyle/gpkg";
+
+const gpkg = await GeoPackage.open("mydata.gpkg");
+
+await gpkg.createFeatureTable({
+  tableName: "points",
+  geometryType: "POINT",
+  srsId: 4326,
+});
+
+// Batch insert with progress tracking
+const features = generateFeatures(1000);
+const ids = await gpkg.insertFeatures("points", features, {
+  yieldEvery: 100,
+  onProgress: (done, total) => console.log(`${done}/${total}`),
+});
+
+// Async iteration
+for await (const feature of gpkg.iterateFeatures("points")) {
+  console.log(feature.id);
+}
+
+await gpkg.close();
+```
+
+### Spatial Indexing (R-tree)
+
+```typescript
+import { GeoPackage } from "jsr:@nullstyle/gpkg";
+
+const gpkg = await GeoPackage.open("spatial.gpkg");
+
+await gpkg.createFeatureTable({
+  tableName: "parcels",
+  geometryType: "POLYGON",
+  srsId: 4326,
+});
+
+// Create spatial index for efficient bounding box queries
+await gpkg.createSpatialIndex("parcels");
+
+// Insert features (index is automatically maintained)
+await gpkg.insertFeature("parcels", {
+  geometry: {
+    type: "Polygon",
+    coordinates: [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]],
+  },
+  properties: { parcel_id: "A001" },
+});
+
+// Query by bounding box (uses R-tree when available)
+const results = await gpkg.queryFeatures("parcels", {
+  bounds: { minX: -1, minY: -1, maxX: 2, maxY: 2 },
+});
+
+await gpkg.close();
+```
+
+### GeoJSON Import/Export
+
+```typescript
+import { GeoPackage } from "jsr:@nullstyle/gpkg";
+
+const gpkg = await GeoPackage.open("geojson.gpkg");
+
+// Import GeoJSON FeatureCollection
+const geojson = JSON.parse(await Deno.readTextFile("data.geojson"));
+const { tableName, insertedCount } = await gpkg.fromGeoJSON(geojson, {
+  tableName: "imported_features",
+  srsId: 4326,
+});
+
+console.log(`Imported ${insertedCount} features into ${tableName}`);
+
+// Export to GeoJSON
+const exported = await gpkg.toGeoJSON("imported_features", {
+  includeCRS: true,
+  includeBBox: true,
+});
+
+await Deno.writeTextFile("export.geojson", JSON.stringify(exported));
+
+await gpkg.close();
+```
+
+### Attribute Tables (Non-Spatial)
+
+```typescript
+import { GeoPackage } from "jsr:@nullstyle/gpkg";
+
+const gpkg = await GeoPackage.open("data.gpkg");
+
+// Create non-spatial attribute table
+await gpkg.createAttributeTable({
+  tableName: "metadata",
+  columns: [
+    { name: "key", type: "TEXT", notNull: true, unique: true },
+    { name: "value", type: "TEXT" },
+  ],
+});
+
+// Insert attribute rows
+await gpkg.insertAttribute("metadata", {
+  properties: { key: "version", value: "1.0.0" },
+});
+
+// Query attributes with parameterized WHERE
+const rows = await gpkg.queryAttributes("metadata", {
+  where: { sql: "key = ?", params: ["version"] },
+});
+
+await gpkg.close();
+```
+
+### Schema Extension (Data Columns & Constraints)
+
+```typescript
+import { GeoPackage } from "jsr:@nullstyle/gpkg";
+
+const gpkg = await GeoPackage.open("schema.gpkg");
+
+await gpkg.createFeatureTable({
+  tableName: "sensors",
+  geometryType: "POINT",
+  srsId: 4326,
+  columns: [
+    { name: "status", type: "TEXT" },
+    { name: "temperature", type: "REAL" },
+  ],
+});
+
+// Define column metadata
+await gpkg.addDataColumn({
+  tableName: "sensors",
+  columnName: "status",
+  name: "status",
+  title: "Sensor Status",
+  description: "Current operational status",
+  constraintName: "status_constraint",
+});
+
+// Add enum constraint
+await gpkg.addEnumConstraint({
+  constraintName: "status_constraint",
+  constraintType: "enum",
+  value: "active",
+});
+await gpkg.addEnumConstraint({
+  constraintName: "status_constraint",
+  constraintType: "enum",
+  value: "inactive",
+});
+
+// Add range constraint for temperature
+await gpkg.addRangeConstraint({
+  constraintName: "temp_range",
+  constraintType: "range",
+  min: -50,
+  max: 150,
+  minIsInclusive: true,
+  maxIsInclusive: true,
+});
+
+// Validate values
+const isValid = await gpkg.validateValueAgainstConstraint("status_constraint", "active"); // true
+
+await gpkg.close();
 ```
 
 ### Working with Tiles
@@ -89,10 +248,10 @@ gpkg.close();
 ```typescript
 import { GeoPackage } from "jsr:@nullstyle/gpkg";
 
-const gpkg = new GeoPackage("tiles.gpkg");
+const gpkg = await GeoPackage.open("tiles.gpkg");
 
 // Create tile matrix set
-gpkg.createTileMatrixSet({
+await gpkg.createTileMatrixSet({
   tableName: "world_tiles",
   srsId: 3857, // Web Mercator
   minX: -20037508.34,
@@ -102,7 +261,7 @@ gpkg.createTileMatrixSet({
 });
 
 // Add tile matrix (zoom level)
-gpkg.addTileMatrix({
+await gpkg.addTileMatrix({
   tableName: "world_tiles",
   zoomLevel: 0,
   matrixWidth: 1,
@@ -113,27 +272,21 @@ gpkg.addTileMatrix({
   pixelYSize: 156543.03392804097,
 });
 
-// Insert tile (PNG image data)
+// Insert tile with format validation
 const tileData = await Deno.readFile("tile_0_0_0.png");
-gpkg.insertTile("world_tiles", {
-  zoomLevel: 0,
-  tileColumn: 0,
-  tileRow: 0,
-  tileData,
-});
+await gpkg.insertTile(
+  "world_tiles",
+  { zoomLevel: 0, tileColumn: 0, tileRow: 0, tileData },
+  { validateFormat: true, allowedFormats: ["png", "jpeg", "webp"] },
+);
+
+// Detect tile format
+const format = await gpkg.detectTileFormat(tileData); // "png"
 
 // Retrieve tile
-const tile = gpkg.getTile("world_tiles", {
-  zoom: 0,
-  column: 0,
-  row: 0,
-});
+const tile = await gpkg.getTile("world_tiles", { zoom: 0, column: 0, row: 0 });
 
-if (tile) {
-  await Deno.writeFile("retrieved_tile.png", tile.tileData);
-}
-
-gpkg.close();
+await gpkg.close();
 ```
 
 ### Transactions
@@ -141,91 +294,149 @@ gpkg.close();
 ```typescript
 import { GeoPackage } from "jsr:@nullstyle/gpkg";
 
-const gpkg = new GeoPackage("data.gpkg");
+const gpkg = await GeoPackage.open("data.gpkg");
 
-gpkg.createFeatureTable({
+await gpkg.createFeatureTable({
   tableName: "points",
   geometryType: "POINT",
   srsId: 4326,
-  columns: [{ name: "name", type: "TEXT" }],
 });
 
-// Use transactions for atomic operations
-gpkg.transaction(() => {
-  for (let i = 0; i < 1000; i++) {
-    gpkg.insertFeature("points", {
-      geometry: {
-        type: "Point",
-        coordinates: [Math.random() * 360 - 180, Math.random() * 180 - 90],
-      },
-      properties: { name: `Point ${i}` },
-    });
-  }
+// Use transactions for atomic operations (callback must be sync)
+await gpkg.transaction(() => {
+  // Transaction callbacks are synchronous
+  // For batch inserts, prefer insertFeatures() instead
 });
 
-console.log(`Inserted ${gpkg.countFeatures("points")} features`);
+// Or use batch insert with progress
+await gpkg.insertFeatures(
+  "points",
+  Array.from({ length: 1000 }, (_, i) => ({
+    geometry: {
+      type: "Point" as const,
+      coordinates: [Math.random() * 360 - 180, Math.random() * 180 - 90],
+    },
+    properties: { index: i },
+  })),
+  { yieldEvery: 100 },
+);
 
-gpkg.close();
+console.log(`Inserted ${await gpkg.countFeatures("points")} features`);
+
+await gpkg.close();
 ```
 
 ## API Reference
 
 ### GeoPackage Class
 
-#### Constructor
+#### Static Methods
 
-- `new GeoPackage(path: string, options?: GeoPackageOptions)`
+- `GeoPackage.open(path: string, options?: GeoPackageOptions): Promise<GeoPackage>`
+- `GeoPackage.memory(): Promise<GeoPackage>`
+
+#### Properties
+
+- `path: string` - Database file path
+- `closed: boolean` - Whether the database is closed
 
 #### Spatial Reference Systems
 
-- `getSpatialReferenceSystem(srsId: number): SpatialReferenceSystem | undefined`
-- `listSpatialReferenceSystems(): SpatialReferenceSystem[]`
-- `addSpatialReferenceSystem(srs: SpatialReferenceSystem): void`
-- `hasSpatialReferenceSystem(srsId: number): boolean`
+- `getSpatialReferenceSystem(srsId: number): Promise<SpatialReferenceSystem | undefined>`
+- `listSpatialReferenceSystems(): Promise<SpatialReferenceSystem[]>`
+- `addSpatialReferenceSystem(srs: SpatialReferenceSystem): Promise<void>`
+- `hasSpatialReferenceSystem(srsId: number): Promise<boolean>`
 
 #### Contents
 
-- `getContent(tableName: string): Content | undefined`
-- `listContents(): Content[]`
-- `listContentsByType(dataType: "features" | "tiles" | "attributes"): Content[]`
+- `getContent(tableName: string): Promise<Content | undefined>`
+- `listContents(): Promise<Content[]>`
+- `listContentsByType(dataType: "features" | "tiles" | "attributes"): Promise<Content[]>`
 
 #### Features
 
-- `createFeatureTable(config: FeatureTableConfig): void`
-- `insertFeature<T>(tableName: string, feature: Omit<Feature<T>, "id">): number`
-- `getFeature<T>(tableName: string, id: number): Feature<T> | undefined`
-- `queryFeatures<T>(tableName: string, options?: FeatureQueryOptions): Feature<T>[]`
-- `updateFeature<T>(tableName: string, id: number, updates: Partial<Omit<Feature<T>, "id">>): void`
-- `deleteFeature(tableName: string, id: number): void`
-- `countFeatures(tableName: string, options?: Pick<FeatureQueryOptions, "where" | "bounds">): number`
-- `calculateFeatureBounds(tableName: string): BoundingBox | undefined`
+- `createFeatureTable(config: FeatureTableConfig): Promise<void>`
+- `insertFeature<T>(tableName: string, feature: Omit<Feature<T>, "id">): Promise<number>`
+- `insertFeatures<T>(tableName: string, features: Omit<Feature<T>, "id">[], options?: BatchOptions): Promise<number[]>`
+- `getFeature<T>(tableName: string, id: number): Promise<Feature<T> | undefined>`
+- `queryFeatures<T>(tableName: string, options?: FeatureQueryOptions): Promise<Feature<T>[]>`
+- `iterateFeatures<T>(tableName: string, options?: { yieldEvery?: number }): AsyncGenerator<Feature<T>>`
+- `updateFeature<T>(tableName: string, id: number, updates: Partial<Omit<Feature<T>, "id">>): Promise<void>`
+- `deleteFeature(tableName: string, id: number): Promise<void>`
+- `countFeatures(tableName: string, options?: { where?: WhereClause; bounds?: BoundingBox }): Promise<number>`
+- `calculateFeatureBounds(tableName: string): Promise<BoundingBox | undefined>`
+
+#### Spatial Index
+
+- `hasSpatialIndex(tableName: string): Promise<boolean>`
+- `createSpatialIndex(tableName: string): Promise<void>`
+- `dropSpatialIndex(tableName: string): Promise<void>`
+- `rebuildSpatialIndex(tableName: string): Promise<void>`
+
+#### Attribute Tables
+
+- `createAttributeTable(config: AttributeTableConfig): Promise<void>`
+- `insertAttribute<T>(tableName: string, row: Omit<AttributeRow<T>, "id">): Promise<number>`
+- `insertAttributes<T>(tableName: string, rows: Omit<AttributeRow<T>, "id">[], options?: BatchOptions): Promise<number[]>`
+- `getAttribute<T>(tableName: string, id: number): Promise<AttributeRow<T> | undefined>`
+- `queryAttributes<T>(tableName: string, options?: AttributeQueryOptions): Promise<AttributeRow<T>[]>`
+- `updateAttribute<T>(tableName: string, id: number, updates: Partial<T>): Promise<void>`
+- `deleteAttribute(tableName: string, id: number): Promise<void>`
+- `countAttributes(tableName: string, options?: { where?: WhereClause }): Promise<number>`
+
+#### GeoJSON
+
+- `toGeoJSON(tableName: string, options?: ToGeoJSONOptions): Promise<GeoJSONFeatureCollection>`
+- `fromGeoJSON(geojson: GeoJSONFeatureCollection, options: FromGeoJSONOptions): Promise<{ tableName: string; insertedCount: number }>`
+
+#### Schema Extension
+
+- `addDataColumn(column: DataColumn): Promise<void>`
+- `getDataColumn(tableName: string, columnName: string): Promise<DataColumn | undefined>`
+- `listDataColumns(tableName: string): Promise<DataColumn[]>`
+- `addRangeConstraint(constraint: RangeConstraint): Promise<void>`
+- `addEnumConstraint(constraint: EnumConstraint): Promise<void>`
+- `addGlobConstraint(constraint: GlobConstraint): Promise<void>`
+- `getConstraints(constraintName: string): Promise<DataColumnConstraint[]>`
+- `validateValueAgainstConstraint(constraintName: string, value: unknown): Promise<boolean>`
 
 #### Tiles
 
-- `createTileMatrixSet(config: TileMatrixSet): void`
-- `addTileMatrix(matrix: TileMatrix): void`
-- `insertTile(tableName: string, tile: Omit<Tile, "id">): number`
-- `getTile(tableName: string, coords: { zoom: number; column: number; row: number }): Tile | undefined`
-- `queryTiles(tableName: string, options?: TileQueryOptions): Tile[]`
-- `deleteTile(tableName: string, coords: { zoom: number; column: number; row: number }): void`
+- `createTileMatrixSet(config: TileMatrixSet): Promise<void>`
+- `addTileMatrix(matrix: TileMatrix): Promise<void>`
+- `insertTile(tableName: string, tile: Omit<Tile, "id">, validationOptions?: TileValidationOptions): Promise<number>`
+- `insertTiles(tableName: string, tiles: Omit<Tile, "id">[], options?: BatchOptions): Promise<number[]>`
+- `getTile(tableName: string, coords: { zoom: number; column: number; row: number }): Promise<Tile | undefined>`
+- `queryTiles(tableName: string, options?: TileQueryOptions): Promise<Tile[]>`
+- `deleteTile(tableName: string, coords: { zoom: number; column: number; row: number }): Promise<void>`
+- `detectTileFormat(data: Uint8Array): Promise<TileImageFormat>`
+- `validateTileData(data: Uint8Array, options?: TileValidationOptions): Promise<TileImageFormat>`
 
 #### Extensions
 
-- `addExtension(extension: Extension): void`
-- `listExtensions(): Extension[]`
-- `hasExtension(extensionName: string, tableName?: string | null, columnName?: string | null): boolean`
+- `addExtension(extension: Extension): Promise<void>`
+- `listExtensions(): Promise<Extension[]>`
+- `hasExtension(extensionName: string, tableName?: string | null, columnName?: string | null): Promise<boolean>`
 
-#### Transactions
+#### Transactions & Database
 
-- `transaction<T>(fn: () => T): T`
+- `transaction<T>(fn: () => T): Promise<T>` - Execute sync function in transaction
+- `close(): Promise<void>`
 
-#### Database
+#### Batch Options
 
-- `close(): void`
+```typescript
+interface BatchOptions {
+  /** Yield to event loop every N operations (default: 100) */
+  yieldEvery?: number;
+  /** Progress callback */
+  onProgress?: (completed: number, total: number) => void;
+}
+```
 
 ### Geometry Functions
 
-- `encodeGeometry(geometry: Geometry | null, options?: { srsId?: number; envelope?: string }): Uint8Array`
+- `encodeGeometry(geometry: Geometry | null, options?: { srsId?: number }): Uint8Array`
 - `decodeGeometry(buffer: Uint8Array): Geometry & { srsId: number }`
 
 ## Supported Geometry Types
@@ -238,7 +449,11 @@ gpkg.close();
 - MultiPolygon
 - GeometryCollection
 
-All geometry types support Z (elevation) and M (measure) coordinates.
+All geometry types support Z (elevation) and M (measure) coordinates with configurable enforcement:
+
+- `z: 0` - Z coordinates prohibited
+- `z: 1` - Z coordinates required
+- `z: 2` - Z coordinates optional
 
 ## Default Spatial Reference Systems
 
@@ -293,14 +508,13 @@ just test-coverage
 
 ## Design Philosophy
 
-This package follows a lightweight, focused approach inspired by
-`@nullstyle/ustate`:
+This package follows a lightweight, focused approach:
 
 - **Minimal Dependencies**: Only depends on `jsr:@db/sqlite`
-- **Core Functionality**: Focuses on essential GeoPackage operations
-- **No Rendering**: Users handle visualization with their preferred libraries
-- **No Projections**: Users add projection libraries as needed
+- **Core Functionality**: Implements essential GeoPackage operations
+- **Standards Compliant**: Follows OGC GeoPackage 1.3 specification
 - **Type Safety**: Comprehensive TypeScript types throughout
+- **Security**: Parameterized queries to prevent SQL injection
 
 ## What's Not Included
 
@@ -308,9 +522,8 @@ To keep the package lightweight, the following are **not** included:
 
 - Rendering/visualization (use Leaflet, MapLibre, etc.)
 - Coordinate transformations (use proj4js or similar)
-- Spatial indexing (R-tree can be added as extension)
-- GeoJSON conversion (trivial to implement in userland)
 - Tile generation (use sharp, canvas, or similar)
+- Complex curve geometries (CircularString, CompoundCurve, etc.)
 
 ## License
 

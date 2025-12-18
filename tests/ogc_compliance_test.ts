@@ -1,4 +1,4 @@
-import { assertEquals, assertExists, assertThrows } from "@std/assert";
+import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert";
 import { GeoPackage } from "../mod.ts";
 import type { Database } from "@db/sqlite";
 
@@ -8,8 +8,8 @@ function getDb(gpkg: GeoPackage): Database {
   return gpkg.db;
 }
 
-Deno.test("OGC Compliance - Mandatory Tables Presence", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("OGC Compliance - Mandatory Tables Presence", async () => {
+  const gpkg = await GeoPackage.memory();
   const db = getDb(gpkg);
 
   const mandatoryTables = [
@@ -28,46 +28,46 @@ Deno.test("OGC Compliance - Mandatory Tables Presence", () => {
     assertEquals(row?.[0], 1, `Table ${table} should exist`);
   }
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("OGC Compliance - Default Spatial Reference Systems", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("OGC Compliance - Default Spatial Reference Systems", async () => {
+  const gpkg = await GeoPackage.memory();
 
   // Requirement 11: The gpkg_spatial_ref_sys table SHALL contain a record for
   // organization "EPSG", organization_coordsys_id 4326 (WGS 84)
-  const wgs84 = gpkg.getSpatialReferenceSystem(4326);
+  const wgs84 = await gpkg.getSpatialReferenceSystem(4326);
   assertExists(wgs84);
   assertEquals(wgs84.organization, "EPSG");
   assertEquals(wgs84.organizationCoordsysId, 4326);
 
   // Requirement 12: The gpkg_spatial_ref_sys table SHALL contain a record for
   // organization "NONE", organization_coordsys_id -1 (Undefined Cartesian)
-  const undefinedCartesian = gpkg.getSpatialReferenceSystem(-1);
+  const undefinedCartesian = await gpkg.getSpatialReferenceSystem(-1);
   assertExists(undefinedCartesian);
   assertEquals(undefinedCartesian.organization, "NONE");
   assertEquals(undefinedCartesian.organizationCoordsysId, -1);
 
   // Requirement 13: The gpkg_spatial_ref_sys table SHALL contain a record for
   // organization "NONE", organization_coordsys_id 0 (Undefined Geographic)
-  const undefinedGeographic = gpkg.getSpatialReferenceSystem(0);
+  const undefinedGeographic = await gpkg.getSpatialReferenceSystem(0);
   assertExists(undefinedGeographic);
   assertEquals(undefinedGeographic.organization, "NONE");
   assertEquals(undefinedGeographic.organizationCoordsysId, 0);
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("OGC Compliance - Geometry Header", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("OGC Compliance - Geometry Header", async () => {
+  const gpkg = await GeoPackage.memory();
 
-  gpkg.createFeatureTable({
+  await gpkg.createFeatureTable({
     tableName: "test_geom",
     geometryType: "POINT",
     srsId: 4326,
   });
 
-  const featureId = gpkg.insertFeature("test_geom", {
+  const featureId = await gpkg.insertFeature("test_geom", {
     geometry: { type: "Point", coordinates: [10, 20] },
     properties: {},
   });
@@ -98,20 +98,20 @@ Deno.test("OGC Compliance - Geometry Header", () => {
   const byteOrder = flags & 0x01;
   assertEquals(byteOrder, 1, "Little Endian");
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("OGC Compliance - gpkg_contents constraints", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("OGC Compliance - gpkg_contents constraints", async () => {
+  const gpkg = await GeoPackage.memory();
   const _db = getDb(gpkg);
 
   // Attempt to insert invalid content type
-  assertThrows(() => {
+  await assertRejects(async () => {
     // We can't easily test SQL constraints via the API since the API validates before inserting.
     // So we use raw SQL to verify the database schema constraints are working (if defined).
     // Note: SQLite doesn't strictly enforce CHECK constraints unless enabled, and enum constraints are usually just CHECKs.
     // But we can check if the API prevents it.
-    gpkg.addContent({
+    await gpkg.addContent({
       tableName: "invalid_table",
       // @ts-ignore: testing invalid type
       dataType: "invalid_type",
@@ -119,17 +119,17 @@ Deno.test("OGC Compliance - gpkg_contents constraints", () => {
     });
   });
 
-  gpkg.close();
+  await gpkg.close();
 });
 
-Deno.test("OGC Compliance - gpkg_geometry_columns constraints", () => {
-  const gpkg = new GeoPackage(":memory:");
+Deno.test("OGC Compliance - gpkg_geometry_columns constraints", async () => {
+  const gpkg = await GeoPackage.memory();
 
   // Requirement 30: The srs_id in gpkg_geometry_columns MUST reference a srs_id in gpkg_spatial_ref_sys
   // The API should enforce this check before insertion.
 
   try {
-    gpkg.createFeatureTable({
+    await gpkg.createFeatureTable({
       tableName: "bad_srs",
       geometryType: "POINT",
       srsId: 99999, // Doesn't exist
@@ -143,5 +143,5 @@ Deno.test("OGC Compliance - gpkg_geometry_columns constraints", () => {
     }
   }
 
-  gpkg.close();
+  await gpkg.close();
 });

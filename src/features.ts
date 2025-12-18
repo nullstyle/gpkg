@@ -396,9 +396,12 @@ export function queryFeatures<T = Record<string, unknown>>(
   if (!options.bounds) {
     if (options.limit !== undefined) {
       sql += ` LIMIT ${options.limit}`;
-    }
-    if (options.offset !== undefined) {
-      sql += ` OFFSET ${options.offset}`;
+      if (options.offset !== undefined) {
+        sql += ` OFFSET ${options.offset}`;
+      }
+    } else if (options.offset !== undefined) {
+      // SQLite requires LIMIT before OFFSET, use -1 for unlimited
+      sql += ` LIMIT -1 OFFSET ${options.offset}`;
     }
   }
 

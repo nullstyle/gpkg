@@ -1,8 +1,8 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "jsr:@std/assert";
 import { decodeGeometry, encodeGeometry } from "../mod.ts";
 import type { Geometry } from "../mod.ts";
 
-Deno.test("Geometry - Encode and decode Point", () => {
+Deno.test("Geometry - Encode and decode Point", async () => {
   const point: Geometry = {
     type: "Point",
     coordinates: [-122.4, 37.8],
@@ -17,7 +17,7 @@ Deno.test("Geometry - Encode and decode Point", () => {
   assertEquals((decoded.coordinates as number[])[1], 37.8);
 });
 
-Deno.test("Geometry - Encode and decode LineString", () => {
+Deno.test("Geometry - Encode and decode LineString", async () => {
   const lineString: Geometry = {
     type: "LineString",
     coordinates: [
@@ -34,7 +34,7 @@ Deno.test("Geometry - Encode and decode LineString", () => {
   assertEquals((decoded.coordinates as number[][]).length, 3);
 });
 
-Deno.test("Geometry - Encode and decode Polygon", () => {
+Deno.test("Geometry - Encode and decode Polygon", async () => {
   const polygon: Geometry = {
     type: "Polygon",
     coordinates: [
@@ -56,7 +56,7 @@ Deno.test("Geometry - Encode and decode Polygon", () => {
   assertEquals((decoded.coordinates as number[][][])[0].length, 5);
 });
 
-Deno.test("Geometry - Encode and decode MultiPoint", () => {
+Deno.test("Geometry - Encode and decode MultiPoint", async () => {
   const multiPoint: Geometry = {
     type: "MultiPoint",
     coordinates: [
@@ -72,7 +72,7 @@ Deno.test("Geometry - Encode and decode MultiPoint", () => {
   assertEquals((decoded.coordinates as number[][]).length, 2);
 });
 
-Deno.test("Geometry - Encode with envelope", () => {
+Deno.test("Geometry - Encode with envelope", async () => {
   const point: Geometry = {
     type: "Point",
     coordinates: [-122.4, 37.8],
@@ -85,12 +85,12 @@ Deno.test("Geometry - Encode with envelope", () => {
   assertEquals(decoded.srsId, 4326);
 });
 
-Deno.test("Geometry - Encode null geometry", () => {
+Deno.test("Geometry - Encode null geometry", async () => {
   const encoded = encodeGeometry(null, { srsId: 4326 });
   assertEquals(encoded.length > 0, true);
 });
 
-Deno.test("Geometry - Point with Z coordinate", () => {
+Deno.test("Geometry - Point with Z coordinate", async () => {
   const point: Geometry = {
     type: "Point",
     coordinates: [-122.4, 37.8, 100.5],
