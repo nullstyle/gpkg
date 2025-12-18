@@ -10,6 +10,109 @@ import type {
   TileMatrixSet,
   TileQueryOptions,
 } from "./types.ts";
+
+/**
+ * Supported tile image formats.
+ */
+export type TileImageFormat = "png" | "jpeg" | "webp" | "unknown";
+
+/**
+ * Magic bytes for image format detection.
+ */
+const IMAGE_MAGIC_BYTES = {
+  PNG: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], // \x89PNG\r\n\x1a\n
+  JPEG: [0xff, 0xd8, 0xff], // FFD8FF
+  WEBP_RIFF: [0x52, 0x49, 0x46, 0x46], // RIFF
+  WEBP_WEBP: [0x57, 0x45, 0x42, 0x50], // WEBP (at offset 8)
+} as const;
+
+/**
+ * Detect the image format from tile data.
+ */
+export function detectTileFormat(data: Uint8Array): TileImageFormat {
+  if (data.length < 12) {
+    return "unknown";
+  }
+
+  // Check PNG
+  if (matchesMagicBytes(data, IMAGE_MAGIC_BYTES.PNG)) {
+    return "png";
+  }
+
+  // Check JPEG
+  if (matchesMagicBytes(data, IMAGE_MAGIC_BYTES.JPEG)) {
+    return "jpeg";
+  }
+
+  // Check WebP (RIFF....WEBP)
+  if (
+    matchesMagicBytes(data, IMAGE_MAGIC_BYTES.WEBP_RIFF) &&
+    matchesMagicBytes(data.slice(8), IMAGE_MAGIC_BYTES.WEBP_WEBP)
+  ) {
+    return "webp";
+  }
+
+  return "unknown";
+}
+
+/**
+ * Check if data starts with the given magic bytes.
+ */
+function matchesMagicBytes(
+  data: Uint8Array,
+  magic: readonly number[],
+): boolean {
+  if (data.length < magic.length) {
+    return false;
+  }
+  for (let i = 0; i < magic.length; i++) {
+    if (data[i] !== magic[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Validation options for tile insertion.
+ */
+export interface TileValidationOptions {
+  /** Whether to validate image format (default: false) */
+  validateFormat?: boolean;
+  /** Allowed image formats (default: ["png", "jpeg", "webp"]) */
+  allowedFormats?: TileImageFormat[];
+}
+
+/**
+ * Validate tile image data.
+ * Throws an error if validation fails.
+ */
+export function validateTileData(
+  data: Uint8Array,
+  options: TileValidationOptions = {},
+): TileImageFormat {
+  const format = detectTileFormat(data);
+
+  if (options.validateFormat !== false) {
+    const allowedFormats = options.allowedFormats ?? ["png", "jpeg", "webp"];
+
+    if (format === "unknown") {
+      throw new Error(
+        "Unknown tile image format. Expected PNG, JPEG, or WebP.",
+      );
+    }
+
+    if (!allowedFormats.includes(format)) {
+      throw new Error(
+        `Tile image format '${format}' is not allowed. Allowed formats: ${
+          allowedFormats.join(", ")
+        }`,
+      );
+    }
+  }
+
+  return format;
+}
 import {
   escapeIdentifier,
   isValidZoomLevel,
@@ -202,7 +305,7 @@ export function addTileMatrix(db: Database, matrix: TileMatrix): void {
   }
 
   const stmt = db.prepare(`
-    INSERT INTO gpkg_tile_matrix 
+    INSERT INTO gpkg_tile_matrix
     (table_name, zoom_level, matrix_width, matrix_height, tile_width, tile_height, pixel_x_size, pixel_y_size)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
@@ -303,6 +406,7 @@ export function insertTile(
   db: Database,
   tableName: string,
   tile: Omit<Tile, "id">,
+  validationOptions?: TileValidationOptions,
 ): number {
   validateTableName(tableName);
 
@@ -328,8 +432,13 @@ export function insertTile(
     );
   }
 
+  // Validate tile image format if requested
+  if (validationOptions?.validateFormat) {
+    validateTileData(tile.tileData, validationOptions);
+  }
+
   const sql = `
-    INSERT OR REPLACE INTO ${escapeIdentifier(tableName)} 
+    INSERT OR REPLACE INTO ${escapeIdentifier(tableName)}
     (zoom_level, tile_column, tile_row, tile_data)
     VALUES (?, ?, ?, ?)
   `;
@@ -507,7 +616,7 @@ export function getAvailableZoomLevels(
   validateTableName(tableName);
 
   const sql = `
-    SELECT DISTINCT zoom_level 
+    SELECT DISTINCT zoom_level
     FROM ${escapeIdentifier(tableName)}
     ORDER BY zoom_level
   `;

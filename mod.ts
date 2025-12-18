@@ -68,8 +68,22 @@ export type {
   WhereClause,
 } from "./src/types.ts";
 
+// Export tile format types
+export type { TileImageFormat, TileValidationOptions } from "./src/tiles.ts";
+export { detectTileFormat, validateTileData } from "./src/tiles.ts";
+
 // Export attribute table types
 export type { AttributeQueryOptions, AttributeRow } from "./src/attributes.ts";
+
+// Export schema extension types
+export type {
+  ConstraintType,
+  DataColumn,
+  DataColumnConstraint,
+  EnumConstraint,
+  GlobConstraint,
+  RangeConstraint,
+} from "./src/schema.ts";
 
 // Export GeoJSON types and helpers
 export type {

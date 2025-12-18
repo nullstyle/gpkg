@@ -30,6 +30,7 @@ import * as extensions from "./extensions.ts";
 import * as attributes from "./attributes.ts";
 import * as geojson from "./geojson.ts";
 import * as rtree from "./rtree.ts";
+import * as schema from "./schema.ts";
 
 /**
  * GeoPackage database manager.
@@ -84,6 +85,7 @@ export class GeoPackage {
     features.initializeGeometryColumnsTable(this.db);
     tiles.initializeTileMatrixTables(this.db);
     extensions.initializeExtensionsTable(this.db);
+    schema.initializeSchemaExtensionTables(this.db);
   }
 
   /**
@@ -335,6 +337,124 @@ export class GeoPackage {
     rtree.populateSpatialIndex(this.db, tableName);
   }
 
+  // ========== Schema (Data Columns) ==========
+
+  /**
+   * Add a data column definition with metadata.
+   */
+  addDataColumn(column: schema.DataColumn): void {
+    schema.addDataColumn(this.db, column);
+  }
+
+  /**
+   * Get a data column definition.
+   */
+  getDataColumn(
+    tableName: string,
+    columnName: string,
+  ): schema.DataColumn | undefined {
+    return schema.getDataColumn(this.db, tableName, columnName);
+  }
+
+  /**
+   * List all data column definitions for a table.
+   */
+  listDataColumns(tableName: string): schema.DataColumn[] {
+    return schema.listDataColumns(this.db, tableName);
+  }
+
+  /**
+   * Update a data column definition.
+   */
+  updateDataColumn(column: schema.DataColumn): void {
+    schema.updateDataColumn(this.db, column);
+  }
+
+  /**
+   * Delete a data column definition.
+   */
+  deleteDataColumn(tableName: string, columnName: string): void {
+    schema.deleteDataColumn(this.db, tableName, columnName);
+  }
+
+  /**
+   * Add a range constraint.
+   */
+  addRangeConstraint(
+    constraint: Omit<schema.RangeConstraint, "constraintType">,
+  ): void {
+    schema.addRangeConstraint(this.db, constraint);
+  }
+
+  /**
+   * Add an enum constraint value.
+   */
+  addEnumConstraint(
+    constraint: Omit<schema.EnumConstraint, "constraintType">,
+  ): void {
+    schema.addEnumConstraint(this.db, constraint);
+  }
+
+  /**
+   * Add a glob constraint (pattern matching).
+   */
+  addGlobConstraint(
+    constraint: Omit<schema.GlobConstraint, "constraintType">,
+  ): void {
+    schema.addGlobConstraint(this.db, constraint);
+  }
+
+  /**
+   * Get all constraints with a given name.
+   */
+  getConstraints(constraintName: string): schema.DataColumnConstraint[] {
+    return schema.getConstraints(this.db, constraintName);
+  }
+
+  /**
+   * Get enum values for a constraint.
+   */
+  getEnumValues(constraintName: string): string[] {
+    return schema.getEnumValues(this.db, constraintName);
+  }
+
+  /**
+   * Get range constraint details.
+   */
+  getRangeConstraint(
+    constraintName: string,
+  ): schema.RangeConstraint | undefined {
+    return schema.getRangeConstraint(this.db, constraintName);
+  }
+
+  /**
+   * List all constraint names.
+   */
+  listConstraintNames(): string[] {
+    return schema.listConstraintNames(this.db);
+  }
+
+  /**
+   * Delete a constraint.
+   */
+  deleteConstraint(constraintName: string): void {
+    schema.deleteConstraint(this.db, constraintName);
+  }
+
+  /**
+   * Validate a value against a constraint.
+   */
+  validateValueAgainstConstraint(
+    constraintName: string,
+    value: unknown,
+  ): boolean {
+    return schema.validateValueAgainstConstraint(
+      this.db,
+      constraintName,
+      value,
+    );
+  }
+
   // ========== GeoJSON ==========
 
   /**
@@ -471,9 +591,35 @@ export class GeoPackage {
 
   /**
    * Insert a tile into a tile pyramid table.
+   * @param tableName - The tile table name
+   * @param tile - The tile data to insert
+   * @param validationOptions - Optional validation options for tile image format
    */
-  insertTile(tableName: string, tile: Omit<Tile, "id">): number {
-    return tiles.insertTile(this.db, tableName, tile);
+  insertTile(
+    tableName: string,
+    tile: Omit<Tile, "id">,
+    validationOptions?: tiles.TileValidationOptions,
+  ): number {
+    return tiles.insertTile(this.db, tableName, tile, validationOptions);
+  }
+
+  /**
+   * Detect the image format of tile data.
+   * @returns The detected format: "png", "jpeg", "webp", or "unknown"
+   */
+  detectTileFormat(data: Uint8Array): tiles.TileImageFormat {
+    return tiles.detectTileFormat(data);
+  }
+
+  /**
+   * Validate tile image data.
+   * @throws Error if the image format is unknown or not allowed
+   */
+  validateTileData(
+    data: Uint8Array,
+    options?: tiles.TileValidationOptions,
+  ): tiles.TileImageFormat {
+    return tiles.validateTileData(data, options);
   }
 
   /**
