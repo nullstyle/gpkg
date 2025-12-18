@@ -2,7 +2,12 @@
  * Tile image format validation unit tests.
  */
 
-import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert";
+import {
+  assertEquals,
+  assertExists,
+  assertRejects,
+  assertThrows,
+} from "@std/assert";
 import { detectTileFormat, GeoPackage, validateTileData } from "../mod.ts";
 
 // Sample image magic bytes for testing
@@ -80,62 +85,62 @@ const INVALID_DATA = new Uint8Array([
 
 // ============== Format Detection ==============
 
-Deno.test("Tiles - Detect PNG format", async () => {
+Deno.test("Tiles - Detect PNG format", () => {
   const format = detectTileFormat(PNG_HEADER);
   assertEquals(format, "png");
 });
 
-Deno.test("Tiles - Detect JPEG format", async () => {
+Deno.test("Tiles - Detect JPEG format", () => {
   const format = detectTileFormat(JPEG_HEADER);
   assertEquals(format, "jpeg");
 });
 
-Deno.test("Tiles - Detect WebP format", async () => {
+Deno.test("Tiles - Detect WebP format", () => {
   const format = detectTileFormat(WEBP_HEADER);
   assertEquals(format, "webp");
 });
 
-Deno.test("Tiles - Detect unknown format", async () => {
+Deno.test("Tiles - Detect unknown format", () => {
   const format = detectTileFormat(INVALID_DATA);
   assertEquals(format, "unknown");
 });
 
-Deno.test("Tiles - Detect format with empty data", async () => {
+Deno.test("Tiles - Detect format with empty data", () => {
   const format = detectTileFormat(new Uint8Array(0));
   assertEquals(format, "unknown");
 });
 
-Deno.test("Tiles - Detect format with too short data", async () => {
+Deno.test("Tiles - Detect format with too short data", () => {
   const format = detectTileFormat(new Uint8Array([0x89, 0x50]));
   assertEquals(format, "unknown");
 });
 
 // ============== Validation ==============
 
-Deno.test("Tiles - Validate PNG data", async () => {
+Deno.test("Tiles - Validate PNG data", () => {
   const format = validateTileData(PNG_HEADER, { validateFormat: true });
   assertEquals(format, "png");
 });
 
-Deno.test("Tiles - Validate JPEG data", async () => {
+Deno.test("Tiles - Validate JPEG data", () => {
   const format = validateTileData(JPEG_HEADER, { validateFormat: true });
   assertEquals(format, "jpeg");
 });
 
-Deno.test("Tiles - Validate WebP data", async () => {
+Deno.test("Tiles - Validate WebP data", () => {
   const format = validateTileData(WEBP_HEADER, { validateFormat: true });
   assertEquals(format, "webp");
 });
 
-Deno.test("Tiles - Validation rejects unknown format", async () => {
-  await assertRejects(
-    async () => validateTileData(INVALID_DATA, { validateFormat: true }),
+Deno.test("Tiles - Validation rejects unknown format", () => {
+  assertThrows(
+    () => validateTileData(INVALID_DATA, { validateFormat: true }),
     Error,
     "Unknown tile image format",
   );
 });
 
-Deno.test("Tiles - Validation with restricted formats", async () => {
+Deno.test("Tiles - Validation with restricted formats", () => {
   // Only allow PNG
   const format = validateTileData(PNG_HEADER, {
     validateFormat: true,
@@ -144,8 +149,8 @@ Deno.test("Tiles - Validation with restricted formats", async () => {
   assertEquals(format, "png");
 
   // JPEG should be rejected
-  await assertRejects(
-    async () =>
+  assertThrows(
+    () =>
       validateTileData(JPEG_HEADER, {
         validateFormat: true,
         allowedFormats: ["png"],
@@ -155,7 +160,7 @@ Deno.test("Tiles - Validation with restricted formats", async () => {
   );
 });
 
-Deno.test("Tiles - Validation without format check", async () => {
+Deno.test("Tiles - Validation without format check", () => {
   // Should return format but not throw even for unknown
   const format = validateTileData(INVALID_DATA, { validateFormat: false });
   assertEquals(format, "unknown");
@@ -201,7 +206,11 @@ Deno.test("Tiles - Insert tile with format validation", async () => {
   assertEquals(typeof id, "number");
 
   // Verify tile was inserted
-  const tile = await gpkg.getTile("validated_tiles", { zoom: 0, column: 0, row: 0 });
+  const tile = await gpkg.getTile("validated_tiles", {
+    zoom: 0,
+    column: 0,
+    row: 0,
+  });
   assertExists(tile);
 
   await gpkg.close();
@@ -370,7 +379,7 @@ Deno.test("Tiles - validateTileData method on GeoPackage", async () => {
 
 // ============== Edge Cases ==============
 
-Deno.test("Tiles - PNG with extra data after header", async () => {
+Deno.test("Tiles - PNG with extra data after header", () => {
   const pngWithExtraData = new Uint8Array(1000);
   pngWithExtraData.set(PNG_HEADER, 0);
   // Fill rest with random data
@@ -382,7 +391,7 @@ Deno.test("Tiles - PNG with extra data after header", async () => {
   assertEquals(format, "png");
 });
 
-Deno.test("Tiles - JPEG variants", async () => {
+Deno.test("Tiles - JPEG variants", () => {
   // JPEG with different APP markers
   const jpegApp1 = new Uint8Array([
     0xff,
@@ -402,7 +411,7 @@ Deno.test("Tiles - JPEG variants", async () => {
   assertEquals(detectTileFormat(jpegApp1), "jpeg");
 });
 
-Deno.test("Tiles - Almost valid headers", async () => {
+Deno.test("Tiles - Almost valid headers", () => {
   // PNG with one byte wrong
   const almostPng = new Uint8Array([
     0x89,
@@ -440,7 +449,7 @@ Deno.test("Tiles - Almost valid headers", async () => {
   assertEquals(detectTileFormat(almostJpeg), "unknown");
 });
 
-Deno.test("Tiles - WebP without WEBP signature", async () => {
+Deno.test("Tiles - WebP without WEBP signature", () => {
   // RIFF but not WEBP
   const riffNotWebp = new Uint8Array([
     0x52,

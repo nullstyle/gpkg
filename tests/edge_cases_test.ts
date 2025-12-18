@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects } from "jsr:@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
 import { GeoPackage, type WhereClause } from "../mod.ts";
 
 Deno.test("Edge Cases - Invalid Geometry Types", async () => {
@@ -143,7 +143,8 @@ Deno.test("Edge Cases - Z dimension validation", async () => {
   });
 
   // 3D point should fail in no_z table
-  await assertRejects(async () => {
+  await assertRejects(
+    async () => {
       await gpkg.insertFeature("no_z", {
         geometry: { type: "Point", coordinates: [0, 0, 10] },
         properties: {},
@@ -154,7 +155,8 @@ Deno.test("Edge Cases - Z dimension validation", async () => {
   );
 
   // 2D point should fail in requires_z table
-  await assertRejects(async () => {
+  await assertRejects(
+    async () => {
       await gpkg.insertFeature("requires_z", {
         geometry: { type: "Point", coordinates: [0, 0] },
         properties: {},
@@ -217,7 +219,8 @@ Deno.test("Edge Cases - M dimension validation", async () => {
   });
 
   // 4D point (XYZM) should fail in no_m table
-  await assertRejects(async () => {
+  await assertRejects(
+    async () => {
       await gpkg.insertFeature("no_m", {
         geometry: { type: "Point", coordinates: [0, 0, 10, 100] },
         properties: {},
@@ -228,7 +231,8 @@ Deno.test("Edge Cases - M dimension validation", async () => {
   );
 
   // 3D point (XYZ without M) should fail in requires_m table
-  await assertRejects(async () => {
+  await assertRejects(
+    async () => {
       await gpkg.insertFeature("requires_m", {
         geometry: { type: "Point", coordinates: [0, 0, 10] },
         properties: {},
@@ -262,7 +266,8 @@ Deno.test("Edge Cases - Geometry type enforcement on update", async () => {
   });
 
   // Updating to a Polygon should fail
-  await assertRejects(async () => {
+  await assertRejects(
+    async () => {
       await gpkg.updateFeature("points", id, {
         geometry: {
           type: "Polygon",
@@ -428,7 +433,8 @@ Deno.test("Edge Cases - Tile Zoom Levels", async () => {
   });
 
   // Insert tile at invalid zoom (no matrix)
-  await assertRejects(async () => {
+  await assertRejects(
+    async () => {
       await gpkg.insertTile("tiles", {
         zoomLevel: 1,
         tileColumn: 0,
@@ -466,7 +472,8 @@ Deno.test("Edge Cases - Tile Coordinates Out of Bounds", async () => {
     pixelYSize: 1,
   });
 
-  await assertRejects(async () => {
+  await assertRejects(
+    async () => {
       await gpkg.insertTile("tiles", {
         zoomLevel: 0,
         tileColumn: 1, // Max is 0 (width 1)
@@ -529,7 +536,8 @@ Deno.test("Edge Cases - Duplicate Extensions", async () => {
   */
   // But wait, `addExtension` in `extensions.ts` (impl) calls `getExtension`.
 
-  await assertRejects(async () => {
+  await assertRejects(
+    async () => {
       await gpkg.addExtension(ext);
     },
     Error,

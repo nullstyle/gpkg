@@ -2,7 +2,7 @@
  * Schema extension (gpkg_data_columns) unit tests.
  */
 
-import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert";
+import { assertEquals, assertExists, assertRejects } from "@std/assert";
 import { GeoPackage } from "../mod.ts";
 
 // ============== Data Column Definitions ==============

@@ -14,7 +14,8 @@ extreme risk, here be dragons, etc.**
 - **Standards-Compliant**: Implements OGC GeoPackage 1.3 specification
 - **Async API**: Promise-based operations with batch support
 - **Feature Support**: Create and manage vector feature tables with geometries
-- **Tile Support**: Create and manage raster tile pyramids with format validation
+- **Tile Support**: Create and manage raster tile pyramids with format
+  validation
 - **Attribute Tables**: Non-spatial tables for metadata and related data
 - **Spatial Indexing**: R-tree index support for efficient bounding box queries
 - **GeoJSON Interop**: Import/export GeoJSON FeatureCollections
@@ -238,7 +239,10 @@ await gpkg.addRangeConstraint({
 });
 
 // Validate values
-const isValid = await gpkg.validateValueAgainstConstraint("status_constraint", "active"); // true
+const isValid = await gpkg.validateValueAgainstConstraint(
+  "status_constraint",
+  "active",
+); // true
 
 await gpkg.close();
 ```
@@ -420,7 +424,8 @@ await gpkg.close();
 
 #### Transactions & Database
 
-- `transaction<T>(fn: () => T): Promise<T>` - Execute sync function in transaction
+- `transaction<T>(fn: () => T): Promise<T>` - Execute sync function in
+  transaction
 - `close(): Promise<void>`
 
 #### Batch Options
@@ -449,7 +454,8 @@ interface BatchOptions {
 - MultiPolygon
 - GeometryCollection
 
-All geometry types support Z (elevation) and M (measure) coordinates with configurable enforcement:
+All geometry types support Z (elevation) and M (measure) coordinates with
+configurable enforcement:
 
 - `z: 0` - Z coordinates prohibited
 - `z: 1` - Z coordinates required

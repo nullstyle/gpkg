@@ -3,7 +3,7 @@
  * Tests the gpkg_rtree_index extension implementation.
  */
 
-import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert";
+import { assertEquals, assertExists, assertRejects } from "@std/assert";
 import { type BoundingBox, GeoPackage } from "../mod.ts";
 
 // ============== Index Creation and Management ==============

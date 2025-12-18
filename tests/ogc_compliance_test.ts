@@ -1,4 +1,4 @@
-import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert";
+import { assertEquals, assertExists, assertRejects } from "@std/assert";
 import { GeoPackage } from "../mod.ts";
 import type { Database } from "@db/sqlite";
 

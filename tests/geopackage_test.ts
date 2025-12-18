@@ -1,4 +1,4 @@
-import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert";
+import { assertEquals, assertExists, assertRejects } from "@std/assert";
 import {
   type BoundingBox,
   type GeoJSONFeatureCollection,
@@ -188,7 +188,11 @@ Deno.test("GeoPackage - Tile operations", async () => {
   assertEquals(typeof tileId, "number");
 
   // Get tile
-  const tile = await await gpkg.getTile("tiles", { zoom: 0, column: 0, row: 0 });
+  const tile = await await gpkg.getTile("tiles", {
+    zoom: 0,
+    column: 0,
+    row: 0,
+  });
   assertExists(tile);
   assertEquals(tile.tileData.length, tileData.length);
 
@@ -563,7 +567,9 @@ Deno.test("GeoPackage - Query features with bounds", async () => {
     maxY: 110,
   };
 
-  const farFiltered = await await gpkg.queryFeatures("points", { bounds: farBounds });
+  const farFiltered = await await gpkg.queryFeatures("points", {
+    bounds: farBounds,
+  });
   assertEquals(farFiltered.length, 1);
   assertEquals(farFiltered[0].properties.name, "Far");
 
@@ -621,7 +627,10 @@ Deno.test("GeoPackage - Query features with limit and offset", async () => {
   assertEquals(offset.length, 5);
 
   // Query with both
-  const both = await await gpkg.queryFeatures("points", { limit: 3, offset: 2 });
+  const both = await await gpkg.queryFeatures("points", {
+    limit: 3,
+    offset: 2,
+  });
   assertEquals(both.length, 3);
 
   await await gpkg.close();
@@ -760,34 +769,34 @@ Deno.test("GeoPackage - Bounds update on feature update", async () => {
 Deno.test("GeoPackage - Calculate feature bounds manually", async () => {
   const gpkg = await GeoPackage.memory();
 
-  await await gpkg.createFeatureTable({
+  await gpkg.createFeatureTable({
     tableName: "points",
     geometryType: "POINT",
     srsId: 4326,
     columns: [{ name: "name", type: "TEXT" }],
   });
 
-  const id = await await gpkg.insertFeature("points", {
+  const id = await gpkg.insertFeature("points", {
     geometry: { type: "Point", coordinates: [10, 20] },
     properties: { name: "First" },
   });
 
   // Check bounds via calculate method
-  let content = await await gpkg.getContent("points");
+  const content = await gpkg.getContent("points");
   assertExists(content?.bounds);
 
   // Update to null geometry
-  await await gpkg.updateFeature("points", id, {
+  await gpkg.updateFeature("points", id, {
     geometry: { type: "Point", coordinates: [5, 5] },
   });
 
   // Calculate bounds manually
-  const bounds = await await gpkg.calculateFeatureBounds("points");
+  const bounds = await gpkg.calculateFeatureBounds("points");
   assertExists(bounds);
   assertEquals(bounds.minX, 5);
   assertEquals(bounds.maxX, 5);
 
-  await await gpkg.close();
+  await gpkg.close();
 });
 
 Deno.test("GeoPackage - Export to GeoJSON", async () => {
