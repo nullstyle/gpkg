@@ -246,9 +246,9 @@ export function insertFeature<T = Record<string, unknown>>(
     throw new Error(`Table ${tableName} is not a feature table`);
   }
 
-  // Validate geometry type matches declared type
+  // Validate geometry type and dimensions match declared type
   if (feature.geometry) {
-    validateGeometryType(feature.geometry, geomCol.geometryTypeName, tableName);
+    validateGeometry(feature.geometry, geomCol, tableName);
   }
 
   // Encode geometry
@@ -445,13 +445,9 @@ export function updateFeature<T = Record<string, unknown>>(
 
   // Update geometry
   if (updates.geometry !== undefined) {
-    // Validate geometry type matches declared type
+    // Validate geometry type and dimensions match declared type
     if (updates.geometry) {
-      validateGeometryType(
-        updates.geometry,
-        geomCol.geometryTypeName,
-        tableName,
-      );
+      validateGeometry(updates.geometry, geomCol, tableName);
     }
     setClauses.push(`${escapeIdentifier(geomCol.columnName)} = ?`);
     values.push(
@@ -625,19 +621,97 @@ function isGeometryTypeCompatible(
 }
 
 /**
- * Validate that a geometry matches the declared type for a table.
- * Throws an error if the geometry type is incompatible.
+ * Validate that a geometry matches the declared type and dimensions for a table.
+ * Throws an error if the geometry type or dimensions are incompatible.
  */
-function validateGeometryType(
+function validateGeometry(
   geometry: Geometry,
-  declaredType: GeometryType,
+  geomCol: GeometryColumn,
   tableName: string,
 ): void {
-  if (!isGeometryTypeCompatible(geometry.type, declaredType)) {
+  // Validate geometry type
+  if (!isGeometryTypeCompatible(geometry.type, geomCol.geometryTypeName)) {
     throw new Error(
-      `Geometry type ${geometry.type} is not compatible with declared type ${declaredType} for table ${tableName}`,
+      `Geometry type ${geometry.type} is not compatible with declared type ${geomCol.geometryTypeName} for table ${tableName}`,
     );
   }
+
+  // Validate Z dimension
+  const hasZ = geometryHasZ(geometry);
+  if (geomCol.z === 0 && hasZ) {
+    throw new Error(
+      `Geometry has Z coordinates but table ${tableName} prohibits Z values`,
+    );
+  }
+  if (geomCol.z === 1 && !hasZ) {
+    throw new Error(
+      `Geometry missing Z coordinates but table ${tableName} requires Z values`,
+    );
+  }
+
+  // Validate M dimension
+  const hasM = geometryHasM(geometry);
+  if (geomCol.m === 0 && hasM) {
+    throw new Error(
+      `Geometry has M coordinates but table ${tableName} prohibits M values`,
+    );
+  }
+  if (geomCol.m === 1 && !hasM) {
+    throw new Error(
+      `Geometry missing M coordinates but table ${tableName} requires M values`,
+    );
+  }
+}
+
+/**
+ * Check if a geometry has Z coordinates.
+ */
+function geometryHasZ(geometry: Geometry): boolean {
+  const firstCoord = getFirstCoordinate(geometry);
+  if (!firstCoord) return false;
+  // Check first coordinate - if it has 3+ components, it has Z
+  return firstCoord.length >= 3;
+}
+
+/**
+ * Check if a geometry has M coordinates.
+ */
+function geometryHasM(geometry: Geometry): boolean {
+  const firstCoord = getFirstCoordinate(geometry);
+  if (!firstCoord) return false;
+  // Check first coordinate - if it has 4 components, it has M (XYZM)
+  // Note: XYM (3 components with M but no Z) is rare but technically possible
+  // For simplicity, we assume 4 components = XYZM
+  return firstCoord.length >= 4;
+}
+
+/**
+ * Get the first coordinate from a geometry (preserving all dimensions).
+ */
+function getFirstCoordinate(geometry: Geometry): number[] | undefined {
+  if (geometry.type === "Point") {
+    return geometry.coordinates as number[];
+  } else if (geometry.type === "LineString" || geometry.type === "MultiPoint") {
+    const coords = geometry.coordinates as number[][];
+    return coords.length > 0 ? coords[0] : undefined;
+  } else if (
+    geometry.type === "Polygon" || geometry.type === "MultiLineString"
+  ) {
+    const rings = geometry.coordinates as number[][][];
+    return rings.length > 0 && rings[0].length > 0 ? rings[0][0] : undefined;
+  } else if (geometry.type === "MultiPolygon") {
+    const polygons = geometry.coordinates as number[][][][];
+    return polygons.length > 0 && polygons[0].length > 0 &&
+        polygons[0][0].length > 0
+      ? polygons[0][0][0]
+      : undefined;
+  } else if (geometry.type === "GeometryCollection" && geometry.geometries) {
+    for (const g of geometry.geometries) {
+      const coord = getFirstCoordinate(g);
+      if (coord) return coord;
+    }
+  }
+  return undefined;
 }
 
 /**

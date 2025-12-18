@@ -109,6 +109,148 @@ Deno.test("Edge Cases - GEOMETRY type accepts any geometry", () => {
   gpkg.close();
 });
 
+Deno.test("Edge Cases - Z dimension validation", () => {
+  const gpkg = new GeoPackage(":memory:");
+
+  // Create table that prohibits Z (z=0)
+  gpkg.createFeatureTable({
+    tableName: "no_z",
+    geometryType: "POINT",
+    srsId: 4326,
+    z: 0,
+  });
+
+  // Create table that requires Z (z=1)
+  gpkg.createFeatureTable({
+    tableName: "requires_z",
+    geometryType: "POINT",
+    srsId: 4326,
+    z: 1,
+  });
+
+  // Create table that allows optional Z (z=2)
+  gpkg.createFeatureTable({
+    tableName: "optional_z",
+    geometryType: "POINT",
+    srsId: 4326,
+    z: 2,
+  });
+
+  // 2D point should work in no_z table
+  gpkg.insertFeature("no_z", {
+    geometry: { type: "Point", coordinates: [0, 0] },
+    properties: {},
+  });
+
+  // 3D point should fail in no_z table
+  assertThrows(
+    () => {
+      gpkg.insertFeature("no_z", {
+        geometry: { type: "Point", coordinates: [0, 0, 10] },
+        properties: {},
+      });
+    },
+    Error,
+    "prohibits Z values",
+  );
+
+  // 2D point should fail in requires_z table
+  assertThrows(
+    () => {
+      gpkg.insertFeature("requires_z", {
+        geometry: { type: "Point", coordinates: [0, 0] },
+        properties: {},
+      });
+    },
+    Error,
+    "requires Z values",
+  );
+
+  // 3D point should work in requires_z table
+  gpkg.insertFeature("requires_z", {
+    geometry: { type: "Point", coordinates: [0, 0, 10] },
+    properties: {},
+  });
+
+  // Both 2D and 3D should work in optional_z table
+  gpkg.insertFeature("optional_z", {
+    geometry: { type: "Point", coordinates: [0, 0] },
+    properties: {},
+  });
+  gpkg.insertFeature("optional_z", {
+    geometry: { type: "Point", coordinates: [0, 0, 10] },
+    properties: {},
+  });
+
+  gpkg.close();
+});
+
+Deno.test("Edge Cases - M dimension validation", () => {
+  const gpkg = new GeoPackage(":memory:");
+
+  // Create table that prohibits M (m=0) but allows optional Z (z=2)
+  gpkg.createFeatureTable({
+    tableName: "no_m",
+    geometryType: "POINT",
+    srsId: 4326,
+    z: 2, // Optional Z
+    m: 0, // No M allowed
+  });
+
+  // Create table that requires M (m=1)
+  gpkg.createFeatureTable({
+    tableName: "requires_m",
+    geometryType: "POINT",
+    srsId: 4326,
+    z: 1, // Need Z to have M (XYZM format)
+    m: 1,
+  });
+
+  // 2D point should work in no_m table
+  gpkg.insertFeature("no_m", {
+    geometry: { type: "Point", coordinates: [0, 0] },
+    properties: {},
+  });
+
+  // 3D point (XYZ) should also work in no_m table (has Z but not M)
+  gpkg.insertFeature("no_m", {
+    geometry: { type: "Point", coordinates: [0, 0, 10] },
+    properties: {},
+  });
+
+  // 4D point (XYZM) should fail in no_m table
+  assertThrows(
+    () => {
+      gpkg.insertFeature("no_m", {
+        geometry: { type: "Point", coordinates: [0, 0, 10, 100] },
+        properties: {},
+      });
+    },
+    Error,
+    "prohibits M values",
+  );
+
+  // 3D point (XYZ without M) should fail in requires_m table
+  assertThrows(
+    () => {
+      gpkg.insertFeature("requires_m", {
+        geometry: { type: "Point", coordinates: [0, 0, 10] },
+        properties: {},
+      });
+    },
+    Error,
+    "requires M values",
+  );
+
+  // 4D point (XYZM) should work in requires_m table
+  gpkg.insertFeature("requires_m", {
+    geometry: { type: "Point", coordinates: [0, 0, 10, 100] },
+    properties: {},
+  });
+
+  gpkg.close();
+});
+
 Deno.test("Edge Cases - Geometry type enforcement on update", () => {
   const gpkg = new GeoPackage(":memory:");
   gpkg.createFeatureTable({

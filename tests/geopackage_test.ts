@@ -1,5 +1,10 @@
 import { assertEquals, assertExists, assertThrows } from "@std/assert";
-import { type BoundingBox, GeoPackage, type WhereClause } from "../mod.ts";
+import {
+  type BoundingBox,
+  type GeoJSONFeatureCollection,
+  GeoPackage,
+  type WhereClause,
+} from "../mod.ts";
 
 Deno.test("GeoPackage - Create and open database", () => {
   const gpkg = new GeoPackage(":memory:");
@@ -797,6 +802,239 @@ Deno.test("GeoPackage - Auto-update bounds on geometry update", () => {
   assertEquals(content.bounds.maxX, 50);
   assertEquals(content.bounds.minY, 50);
   assertEquals(content.bounds.maxY, 50);
+
+  gpkg.close();
+});
+
+Deno.test("GeoPackage - Export to GeoJSON", () => {
+  const gpkg = new GeoPackage(":memory:");
+
+  gpkg.createFeatureTable({
+    tableName: "cities",
+    geometryType: "POINT",
+    srsId: 4326,
+    columns: [
+      { name: "name", type: "TEXT" },
+      { name: "population", type: "INTEGER" },
+    ],
+  });
+
+  gpkg.insertFeature("cities", {
+    geometry: { type: "Point", coordinates: [-122.4, 37.8] },
+    properties: { name: "San Francisco", population: 884363 },
+  });
+  gpkg.insertFeature("cities", {
+    geometry: { type: "Point", coordinates: [-118.2, 34.0] },
+    properties: { name: "Los Angeles", population: 3979576 },
+  });
+
+  // Export to GeoJSON
+  const geojson = gpkg.toGeoJSON("cities");
+
+  assertEquals(geojson.type, "FeatureCollection");
+  assertEquals(geojson.features.length, 2);
+  assertEquals(geojson.features[0].type, "Feature");
+  assertEquals(geojson.features[0].geometry?.type, "Point");
+  assertEquals(geojson.features[0].properties.name, "San Francisco");
+
+  gpkg.close();
+});
+
+Deno.test("GeoPackage - Export to GeoJSON with CRS and bbox", () => {
+  const gpkg = new GeoPackage(":memory:");
+
+  gpkg.createFeatureTable({
+    tableName: "points",
+    geometryType: "POINT",
+    srsId: 4326,
+  });
+
+  gpkg.insertFeature("points", {
+    geometry: { type: "Point", coordinates: [0, 0] },
+    properties: {},
+  });
+  gpkg.insertFeature("points", {
+    geometry: { type: "Point", coordinates: [10, 10] },
+    properties: {},
+  });
+
+  // Export with CRS and bbox
+  const geojson = gpkg.toGeoJSON("points", {
+    includeCRS: true,
+    includeBBox: true,
+  });
+
+  assertEquals(geojson.type, "FeatureCollection");
+  assertExists(geojson.crs);
+  assertEquals(geojson.crs?.type, "name");
+  assertEquals(geojson.crs?.properties.name, "urn:ogc:def:crs:EPSG::4326");
+
+  assertExists(geojson.bbox);
+  assertEquals(geojson.bbox, [0, 0, 10, 10]);
+
+  gpkg.close();
+});
+
+Deno.test("GeoPackage - Import from GeoJSON", () => {
+  const gpkg = new GeoPackage(":memory:");
+
+  const geojson: GeoJSONFeatureCollection = {
+    type: "FeatureCollection",
+    features: [
+      {
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [-122.4, 37.8] },
+        properties: { name: "San Francisco", rating: 4.5 },
+      },
+      {
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [-118.2, 34.0] },
+        properties: { name: "Los Angeles", rating: 4.0 },
+      },
+      {
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [-73.9, 40.7] },
+        properties: { name: "New York", rating: 4.8 },
+      },
+    ],
+  };
+
+  // Import GeoJSON
+  const result = gpkg.fromGeoJSON(geojson, {
+    tableName: "imported_cities",
+  });
+
+  assertEquals(result.tableName, "imported_cities");
+  assertEquals(result.insertedCount, 3);
+
+  // Verify imported data
+  const features = gpkg.queryFeatures("imported_cities");
+  assertEquals(features.length, 3);
+
+  const sf = features.find((f) => f.properties.name === "San Francisco");
+  assertExists(sf);
+  assertEquals(sf.geometry?.type, "Point");
+  assertEquals(sf.properties.rating, 4.5);
+
+  // Check content type
+  const content = gpkg.getContent("imported_cities");
+  assertExists(content);
+  assertEquals(content.dataType, "features");
+
+  gpkg.close();
+});
+
+Deno.test("GeoPackage - GeoJSON round-trip", () => {
+  const gpkg = new GeoPackage(":memory:");
+
+  // Create and populate table
+  gpkg.createFeatureTable({
+    tableName: "polygons",
+    geometryType: "POLYGON",
+    srsId: 4326,
+    columns: [{ name: "name", type: "TEXT" }],
+  });
+
+  gpkg.insertFeature("polygons", {
+    geometry: {
+      type: "Polygon",
+      coordinates: [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]],
+    },
+    properties: { name: "Square" },
+  });
+
+  // Export to GeoJSON
+  const exported = gpkg.toGeoJSON("polygons");
+
+  // Import into new table
+  const result = gpkg.fromGeoJSON(exported, {
+    tableName: "polygons_copy",
+  });
+
+  assertEquals(result.insertedCount, 1);
+
+  // Verify data matches
+  const original = gpkg.queryFeatures("polygons");
+  const copied = gpkg.queryFeatures("polygons_copy");
+
+  assertEquals(original.length, copied.length);
+  assertEquals(original[0].geometry?.type, copied[0].geometry?.type);
+  assertEquals(original[0].properties.name, copied[0].properties.name);
+
+  gpkg.close();
+});
+
+Deno.test("GeoPackage - Import GeoJSON with mixed geometry types", () => {
+  const gpkg = new GeoPackage(":memory:");
+
+  const geojson: GeoJSONFeatureCollection = {
+    type: "FeatureCollection",
+    features: [
+      {
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [0, 0] },
+        properties: { type: "point" },
+      },
+      {
+        type: "Feature",
+        geometry: { type: "LineString", coordinates: [[0, 0], [1, 1]] },
+        properties: { type: "line" },
+      },
+      {
+        type: "Feature",
+        geometry: {
+          type: "Polygon",
+          coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]],
+        },
+        properties: { type: "polygon" },
+      },
+    ],
+  };
+
+  // Should create table with GEOMETRY type
+  const result = gpkg.fromGeoJSON(geojson, {
+    tableName: "mixed",
+  });
+
+  assertEquals(result.insertedCount, 3);
+
+  // Verify geometry column type is GEOMETRY
+  const geomCol = gpkg.getGeometryColumn("mixed");
+  assertExists(geomCol);
+  assertEquals(geomCol.geometryTypeName, "GEOMETRY");
+
+  gpkg.close();
+});
+
+Deno.test("GeoPackage - Import GeoJSON with CRS", () => {
+  const gpkg = new GeoPackage(":memory:");
+
+  const geojson: GeoJSONFeatureCollection = {
+    type: "FeatureCollection",
+    crs: {
+      type: "name",
+      properties: { name: "urn:ogc:def:crs:EPSG::3857" },
+    },
+    features: [
+      {
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [0, 0] },
+        properties: {},
+      },
+    ],
+  };
+
+  // Import should detect SRS from CRS property
+  const result = gpkg.fromGeoJSON(geojson, {
+    tableName: "with_crs",
+  });
+
+  assertEquals(result.insertedCount, 1);
+
+  // Verify SRS was detected
+  const geomCol = gpkg.getGeometryColumn("with_crs");
+  assertExists(geomCol);
+  assertEquals(geomCol.srsId, 3857);
 
   gpkg.close();
 });

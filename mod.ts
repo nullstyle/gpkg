@@ -71,6 +71,17 @@ export type {
 // Export attribute table types
 export type { AttributeQueryOptions, AttributeRow } from "./src/attributes.ts";
 
+// Export GeoJSON types and helpers
+export type {
+  FromGeoJSONOptions,
+  GeoJSONCRS,
+  GeoJSONFeature,
+  GeoJSONFeatureCollection,
+  GeoJSONGeometry,
+  ToGeoJSONOptions,
+} from "./src/geojson.ts";
+export { featureFromGeoJSON, featureToGeoJSON } from "./src/geojson.ts";
+
 // Export geometry encoding/decoding functions
 export { decodeGeometry, encodeGeometry } from "./src/geometry.ts";
 

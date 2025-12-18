@@ -28,6 +28,7 @@ import * as features from "./features.ts";
 import * as tiles from "./tiles.ts";
 import * as extensions from "./extensions.ts";
 import * as attributes from "./attributes.ts";
+import * as geojson from "./geojson.ts";
 
 /**
  * GeoPackage database manager.
@@ -299,6 +300,29 @@ export class GeoPackage {
    */
   calculateFeatureBounds(tableName: string): BoundingBox | undefined {
     return features.calculateFeatureBounds(this.db, tableName);
+  }
+
+  // ========== GeoJSON ==========
+
+  /**
+   * Export features from a table to GeoJSON FeatureCollection.
+   */
+  toGeoJSON(
+    tableName: string,
+    options?: geojson.ToGeoJSONOptions,
+  ): geojson.GeoJSONFeatureCollection {
+    return geojson.toGeoJSON(this.db, tableName, options);
+  }
+
+  /**
+   * Import features from GeoJSON FeatureCollection into a table.
+   * Creates a new table or appends to existing one.
+   */
+  fromGeoJSON(
+    geojsonData: geojson.GeoJSONFeatureCollection,
+    options: geojson.FromGeoJSONOptions,
+  ): { tableName: string; insertedCount: number } {
+    return geojson.fromGeoJSON(this.db, geojsonData, options);
   }
 
   // ========== Attributes ==========
