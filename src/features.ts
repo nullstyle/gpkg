@@ -30,6 +30,13 @@ import {
 } from "./contents.ts";
 import { hasSpatialReferenceSystem } from "./srs.ts";
 import { decodeGeometry, encodeGeometry } from "./geometry.ts";
+import {
+  deleteSpatialIndexEntry,
+  hasSpatialIndex,
+  insertSpatialIndexEntry,
+  queryWithSpatialIndex,
+  updateSpatialIndexEntry,
+} from "./rtree.ts";
 
 /**
  * SQL for creating gpkg_geometry_columns table.
@@ -290,6 +297,9 @@ export function insertFeature<T = Record<string, unknown>>(
     updateTableBounds(db, tableName);
   }
 
+  // Update spatial index if it exists
+  insertSpatialIndexEntry(db, tableName, id, geomBlob);
+
   return id;
 }
 
@@ -335,6 +345,16 @@ export function queryFeatures<T = Record<string, unknown>>(
     throw new Error(`Table ${tableName} is not a feature table`);
   }
 
+  // Check if we can use spatial index for bounds filtering
+  const useSpatialIndex = options.bounds && hasSpatialIndex(db, tableName);
+  let spatialIndexIds: Set<number> | null = null;
+
+  if (useSpatialIndex && options.bounds) {
+    // Get candidate IDs from spatial index
+    const candidateIds = queryWithSpatialIndex(db, tableName, options.bounds);
+    spatialIndexIds = new Set(candidateIds);
+  }
+
   // Build query
   let sql = `SELECT * FROM ${escapeIdentifier(tableName)}`;
   const params: unknown[] = [];
@@ -346,11 +366,20 @@ export function queryFeatures<T = Record<string, unknown>>(
     params.push(...options.where.params);
   }
 
-  if (options.bounds) {
-    // Filter out null geometries when bounds filtering is requested
+  if (options.bounds && !useSpatialIndex) {
+    // Filter out null geometries when bounds filtering without spatial index
     whereClauses.push(
       `${escapeIdentifier(geomCol.columnName)} IS NOT NULL`,
     );
+  }
+
+  // If using spatial index, filter by candidate IDs
+  if (useSpatialIndex && spatialIndexIds && spatialIndexIds.size > 0) {
+    const idList = [...spatialIndexIds].join(",");
+    whereClauses.push(`id IN (${idList})`);
+  } else if (useSpatialIndex && spatialIndexIds && spatialIndexIds.size === 0) {
+    // Spatial index returned no candidates, return empty result
+    return [];
   }
 
   if (whereClauses.length > 0) {
@@ -380,6 +409,7 @@ export function queryFeatures<T = Record<string, unknown>>(
   let features = rows.map((row) => rowToFeature<T>(row, geomCol.columnName));
 
   // Apply bounding box filtering in memory if bounds specified
+  // This is needed even with spatial index as R-tree only does envelope intersection
   if (options.bounds) {
     features = features.filter((feature) => {
       if (!feature.geometry) return false;
@@ -495,6 +525,12 @@ export function updateFeature<T = Record<string, unknown>>(
   // Update bounds if geometry was changed
   if (updates.geometry !== undefined) {
     updateTableBounds(db, tableName);
+
+    // Update spatial index
+    const newGeomBlob = updates.geometry
+      ? encodeGeometry(updates.geometry, { srsId: geomCol.srsId })
+      : null;
+    updateSpatialIndexEntry(db, tableName, id, newGeomBlob);
   }
 }
 
@@ -522,6 +558,9 @@ export function deleteFeature(
 
   // Recalculate bounds after deletion
   updateTableBounds(db, tableName);
+
+  // Remove from spatial index
+  deleteSpatialIndexEntry(db, tableName, id);
 }
 
 /**

@@ -1038,3 +1038,232 @@ Deno.test("GeoPackage - Import GeoJSON with CRS", () => {
 
   gpkg.close();
 });
+
+Deno.test("GeoPackage - Create and use spatial index", () => {
+  const gpkg = new GeoPackage(":memory:");
+
+  gpkg.createFeatureTable({
+    tableName: "indexed_points",
+    geometryType: "POINT",
+    srsId: 4326,
+    columns: [{ name: "name", type: "TEXT" }],
+  });
+
+  // Initially no spatial index
+  assertEquals(gpkg.hasSpatialIndex("indexed_points"), false);
+
+  // Create spatial index
+  gpkg.createSpatialIndex("indexed_points");
+  assertEquals(gpkg.hasSpatialIndex("indexed_points"), true);
+
+  // Insert features - should auto-update index
+  gpkg.insertFeature("indexed_points", {
+    geometry: { type: "Point", coordinates: [0, 0] },
+    properties: { name: "Origin" },
+  });
+  gpkg.insertFeature("indexed_points", {
+    geometry: { type: "Point", coordinates: [10, 10] },
+    properties: { name: "Northeast" },
+  });
+  gpkg.insertFeature("indexed_points", {
+    geometry: { type: "Point", coordinates: [-50, -50] },
+    properties: { name: "Southwest" },
+  });
+
+  // Query with bounds - should use spatial index
+  const bounds: BoundingBox = {
+    minX: -5,
+    minY: -5,
+    maxX: 15,
+    maxY: 15,
+  };
+
+  const filtered = gpkg.queryFeatures("indexed_points", { bounds });
+  assertEquals(filtered.length, 2);
+
+  const names = filtered.map((f) => f.properties.name).sort();
+  assertEquals(names, ["Northeast", "Origin"]);
+
+  gpkg.close();
+});
+
+Deno.test("GeoPackage - Spatial index maintained on update", () => {
+  const gpkg = new GeoPackage(":memory:");
+
+  gpkg.createFeatureTable({
+    tableName: "moving_points",
+    geometryType: "POINT",
+    srsId: 4326,
+    columns: [{ name: "name", type: "TEXT" }],
+  });
+
+  gpkg.createSpatialIndex("moving_points");
+
+  // Insert a point
+  const id = gpkg.insertFeature("moving_points", {
+    geometry: { type: "Point", coordinates: [0, 0] },
+    properties: { name: "Moving" },
+  });
+
+  // Query for point at origin
+  let results = gpkg.queryFeatures("moving_points", {
+    bounds: { minX: -1, minY: -1, maxX: 1, maxY: 1 },
+  });
+  assertEquals(results.length, 1);
+
+  // Move the point far away
+  gpkg.updateFeature("moving_points", id, {
+    geometry: { type: "Point", coordinates: [100, 100] },
+  });
+
+  // Query at origin should return nothing now
+  results = gpkg.queryFeatures("moving_points", {
+    bounds: { minX: -1, minY: -1, maxX: 1, maxY: 1 },
+  });
+  assertEquals(results.length, 0);
+
+  // Query at new location should find it
+  results = gpkg.queryFeatures("moving_points", {
+    bounds: { minX: 99, minY: 99, maxX: 101, maxY: 101 },
+  });
+  assertEquals(results.length, 1);
+
+  gpkg.close();
+});
+
+Deno.test("GeoPackage - Spatial index maintained on delete", () => {
+  const gpkg = new GeoPackage(":memory:");
+
+  gpkg.createFeatureTable({
+    tableName: "deletable_points",
+    geometryType: "POINT",
+    srsId: 4326,
+  });
+
+  gpkg.createSpatialIndex("deletable_points");
+
+  // Insert two points
+  const id1 = gpkg.insertFeature("deletable_points", {
+    geometry: { type: "Point", coordinates: [0, 0] },
+    properties: {},
+  });
+  gpkg.insertFeature("deletable_points", {
+    geometry: { type: "Point", coordinates: [10, 10] },
+    properties: {},
+  });
+
+  // Both should be found
+  let results = gpkg.queryFeatures("deletable_points", {
+    bounds: { minX: -5, minY: -5, maxX: 15, maxY: 15 },
+  });
+  assertEquals(results.length, 2);
+
+  // Delete one
+  gpkg.deleteFeature("deletable_points", id1);
+
+  // Only one should remain
+  results = gpkg.queryFeatures("deletable_points", {
+    bounds: { minX: -5, minY: -5, maxX: 15, maxY: 15 },
+  });
+  assertEquals(results.length, 1);
+
+  gpkg.close();
+});
+
+Deno.test("GeoPackage - Drop spatial index", () => {
+  const gpkg = new GeoPackage(":memory:");
+
+  gpkg.createFeatureTable({
+    tableName: "temp_indexed",
+    geometryType: "POINT",
+    srsId: 4326,
+  });
+
+  gpkg.createSpatialIndex("temp_indexed");
+  assertEquals(gpkg.hasSpatialIndex("temp_indexed"), true);
+
+  gpkg.dropSpatialIndex("temp_indexed");
+  assertEquals(gpkg.hasSpatialIndex("temp_indexed"), false);
+
+  // Queries should still work (without index)
+  gpkg.insertFeature("temp_indexed", {
+    geometry: { type: "Point", coordinates: [0, 0] },
+    properties: {},
+  });
+
+  const results = gpkg.queryFeatures("temp_indexed", {
+    bounds: { minX: -1, minY: -1, maxX: 1, maxY: 1 },
+  });
+  assertEquals(results.length, 1);
+
+  gpkg.close();
+});
+
+Deno.test("GeoPackage - Rebuild spatial index", () => {
+  const gpkg = new GeoPackage(":memory:");
+
+  gpkg.createFeatureTable({
+    tableName: "rebuild_test",
+    geometryType: "POINT",
+    srsId: 4326,
+  });
+
+  // Insert features before creating index
+  gpkg.insertFeature("rebuild_test", {
+    geometry: { type: "Point", coordinates: [0, 0] },
+    properties: {},
+  });
+  gpkg.insertFeature("rebuild_test", {
+    geometry: { type: "Point", coordinates: [10, 10] },
+    properties: {},
+  });
+
+  // Create index (should auto-populate from existing data)
+  gpkg.createSpatialIndex("rebuild_test");
+
+  // Query should work with existing data
+  let results = gpkg.queryFeatures("rebuild_test", {
+    bounds: { minX: -1, minY: -1, maxX: 1, maxY: 1 },
+  });
+  assertEquals(results.length, 1);
+
+  // Rebuild index
+  gpkg.rebuildSpatialIndex("rebuild_test");
+
+  // Should still work
+  results = gpkg.queryFeatures("rebuild_test", {
+    bounds: { minX: -1, minY: -1, maxX: 1, maxY: 1 },
+  });
+  assertEquals(results.length, 1);
+
+  gpkg.close();
+});
+
+Deno.test("GeoPackage - Spatial index error handling", () => {
+  const gpkg = new GeoPackage(":memory:");
+
+  gpkg.createFeatureTable({
+    tableName: "index_errors",
+    geometryType: "POINT",
+    srsId: 4326,
+  });
+
+  // Cannot drop non-existent index
+  assertThrows(
+    () => gpkg.dropSpatialIndex("index_errors"),
+    Error,
+    "does not exist",
+  );
+
+  // Create index
+  gpkg.createSpatialIndex("index_errors");
+
+  // Cannot create duplicate index
+  assertThrows(
+    () => gpkg.createSpatialIndex("index_errors"),
+    Error,
+    "already exists",
+  );
+
+  gpkg.close();
+});

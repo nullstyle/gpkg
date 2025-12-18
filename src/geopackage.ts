@@ -29,6 +29,7 @@ import * as tiles from "./tiles.ts";
 import * as extensions from "./extensions.ts";
 import * as attributes from "./attributes.ts";
 import * as geojson from "./geojson.ts";
+import * as rtree from "./rtree.ts";
 
 /**
  * GeoPackage database manager.
@@ -300,6 +301,38 @@ export class GeoPackage {
    */
   calculateFeatureBounds(tableName: string): BoundingBox | undefined {
     return features.calculateFeatureBounds(this.db, tableName);
+  }
+
+  // ========== Spatial Index ==========
+
+  /**
+   * Check if a spatial index exists for a feature table.
+   */
+  hasSpatialIndex(tableName: string): boolean {
+    return rtree.hasSpatialIndex(this.db, tableName);
+  }
+
+  /**
+   * Create a spatial index for a feature table.
+   * The index will be automatically maintained during insert/update/delete operations.
+   */
+  createSpatialIndex(tableName: string): void {
+    rtree.createSpatialIndex(this.db, tableName);
+  }
+
+  /**
+   * Drop a spatial index for a feature table.
+   */
+  dropSpatialIndex(tableName: string): void {
+    rtree.dropSpatialIndex(this.db, tableName);
+  }
+
+  /**
+   * Rebuild the spatial index from existing feature data.
+   * Useful if the index gets out of sync.
+   */
+  rebuildSpatialIndex(tableName: string): void {
+    rtree.populateSpatialIndex(this.db, tableName);
   }
 
   // ========== GeoJSON ==========
