@@ -1,17 +1,21 @@
 # @nullstyle/gpkg
 
-A lightweight JSR package for interacting with GeoPackage files, built on top of `jsr:@db/sqlite`.
+A lightweight JSR package for interacting with GeoPackage files, built on top of
+`jsr:@db/sqlite`.
 
-**WARNING: This was vibe coded using manus.  This is just for me, use at your own extreme risk, here be dragons, etc.**
+**WARNING: This was vibe coded using manus. This is just for me, use at your own
+extreme risk, here be dragons, etc.**
 
 ## Features
 
-- **Lightweight & Focused**: Minimal dependencies, focused on core GeoPackage functionality
+- **Lightweight & Focused**: Minimal dependencies, focused on core GeoPackage
+  functionality
 - **Type-Safe**: Comprehensive TypeScript types and interfaces
 - **Standards-Compliant**: Implements OGC GeoPackage 1.3 specification
 - **Feature Support**: Create and manage vector feature tables with geometries
 - **Tile Support**: Create and manage raster tile pyramids
-- **Geometry Encoding**: Full GeoPackage binary geometry format support (WKB-based)
+- **Geometry Encoding**: Full GeoPackage binary geometry format support
+  (WKB-based)
 - **Transaction Support**: ACID transactions for data integrity
 - **Extension Management**: Register and manage GeoPackage extensions
 
@@ -289,7 +293,8 @@ just test-coverage
 
 ## Design Philosophy
 
-This package follows a lightweight, focused approach inspired by `@nullstyle/ustate`:
+This package follows a lightweight, focused approach inspired by
+`@nullstyle/ustate`:
 
 - **Minimal Dependencies**: Only depends on `jsr:@db/sqlite`
 - **Core Functionality**: Focuses on essential GeoPackage operations

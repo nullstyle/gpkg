@@ -1,5 +1,5 @@
-import { assertEquals, assertExists } from "@std/assert";
-import { GeoPackage } from "../mod.ts";
+import { assertEquals, assertExists, assertThrows } from "@std/assert";
+import { type BoundingBox, GeoPackage, type WhereClause } from "../mod.ts";
 
 Deno.test("GeoPackage - Create and open database", () => {
   const gpkg = new GeoPackage(":memory:");
@@ -94,7 +94,7 @@ Deno.test("GeoPackage - Query features", () => {
 
   // Query with WHERE
   const filtered = gpkg.queryFeatures("points", {
-    where: "value > 40",
+    where: { sql: "value > ?", params: [40] },
   });
   assertEquals(filtered.length, 2);
 
@@ -320,9 +320,483 @@ Deno.test("GeoPackage - listContentsByType filters by data type", () => {
   assertEquals(tileContents[0].tableName, "tiles");
   assertEquals(tileContents[0].dataType, "tiles");
 
-  // List attributes (should be empty)
+  // List attributes (should be empty since we haven't created any yet)
   const attributeContents = gpkg.listContentsByType("attributes");
   assertEquals(attributeContents.length, 0);
+
+  gpkg.close();
+});
+
+Deno.test("GeoPackage - Create attribute table and insert rows", () => {
+  const gpkg = new GeoPackage(":memory:");
+
+  // Create attribute table
+  gpkg.createAttributeTable({
+    tableName: "metadata",
+    columns: [
+      { name: "key", type: "TEXT", notNull: true },
+      { name: "value", type: "TEXT" },
+    ],
+  });
+
+  // Check content was created
+  const content = gpkg.getContent("metadata");
+  assertExists(content);
+  assertEquals(content.dataType, "attributes");
+
+  // Insert row
+  const id = gpkg.insertAttribute("metadata", {
+    properties: { key: "version", value: "1.0" },
+  });
+
+  assertEquals(typeof id, "number");
+
+  // Get row
+  const row = gpkg.getAttribute("metadata", id);
+  assertExists(row);
+  assertEquals(row.properties.key, "version");
+  assertEquals(row.properties.value, "1.0");
+
+  gpkg.close();
+});
+
+Deno.test("GeoPackage - Query attribute rows", () => {
+  const gpkg = new GeoPackage(":memory:");
+
+  gpkg.createAttributeTable({
+    tableName: "settings",
+    columns: [
+      { name: "category", type: "TEXT" },
+      { name: "name", type: "TEXT" },
+      { name: "enabled", type: "INTEGER" },
+    ],
+  });
+
+  // Insert multiple rows
+  gpkg.insertAttribute("settings", {
+    properties: { category: "display", name: "dark_mode", enabled: 1 },
+  });
+  gpkg.insertAttribute("settings", {
+    properties: { category: "display", name: "compact", enabled: 0 },
+  });
+  gpkg.insertAttribute("settings", {
+    properties: { category: "network", name: "cache", enabled: 1 },
+  });
+
+  // Query all
+  const all = gpkg.queryAttributes("settings");
+  assertEquals(all.length, 3);
+
+  // Query with parameterized WHERE
+  const displaySettings = gpkg.queryAttributes("settings", {
+    where: { sql: "category = ?", params: ["display"] },
+  });
+  assertEquals(displaySettings.length, 2);
+
+  // Query with multiple parameters
+  const whereClause: WhereClause = {
+    sql: "category = ? AND enabled = ?",
+    params: ["display", 1],
+  };
+  const enabledDisplaySettings = gpkg.queryAttributes("settings", {
+    where: whereClause,
+  });
+  assertEquals(enabledDisplaySettings.length, 1);
+  assertEquals(enabledDisplaySettings[0].properties.name, "dark_mode");
+
+  // Count
+  const count = gpkg.countAttributes("settings");
+  assertEquals(count, 3);
+
+  gpkg.close();
+});
+
+Deno.test("GeoPackage - Update and delete attribute rows", () => {
+  const gpkg = new GeoPackage(":memory:");
+
+  gpkg.createAttributeTable({
+    tableName: "items",
+    columns: [
+      { name: "name", type: "TEXT" },
+      { name: "quantity", type: "INTEGER" },
+    ],
+  });
+
+  const id = gpkg.insertAttribute("items", {
+    properties: { name: "Widget", quantity: 10 },
+  });
+
+  // Update
+  gpkg.updateAttribute("items", id, { quantity: 25 });
+
+  const updated = gpkg.getAttribute("items", id);
+  assertEquals(updated?.properties.quantity, 25);
+  assertEquals(updated?.properties.name, "Widget"); // Unchanged
+
+  // Delete
+  gpkg.deleteAttribute("items", id);
+  const deleted = gpkg.getAttribute("items", id);
+  assertEquals(deleted, undefined);
+
+  gpkg.close();
+});
+
+Deno.test("GeoPackage - listContentsByType returns attribute tables", () => {
+  const gpkg = new GeoPackage(":memory:");
+
+  // Create feature table
+  gpkg.createFeatureTable({
+    tableName: "points",
+    geometryType: "POINT",
+    srsId: 4326,
+  });
+
+  // Create attribute tables
+  gpkg.createAttributeTable({
+    tableName: "metadata",
+    columns: [{ name: "key", type: "TEXT" }],
+  });
+
+  gpkg.createAttributeTable({
+    tableName: "settings",
+    columns: [{ name: "name", type: "TEXT" }],
+  });
+
+  // List attributes
+  const attributeContents = gpkg.listContentsByType("attributes");
+  assertEquals(attributeContents.length, 2);
+  assertEquals(
+    attributeContents.every((c) => c.dataType === "attributes"),
+    true,
+  );
+
+  // Verify we can still list features
+  const featureContents = gpkg.listContentsByType("features");
+  assertEquals(featureContents.length, 1);
+
+  gpkg.close();
+});
+
+Deno.test("GeoPackage - Attribute table error handling", () => {
+  const gpkg = new GeoPackage(":memory:");
+
+  gpkg.createAttributeTable({
+    tableName: "test_attrs",
+    columns: [{ name: "value", type: "TEXT" }],
+  });
+
+  // Cannot create duplicate table
+  assertThrows(
+    () => {
+      gpkg.createAttributeTable({
+        tableName: "test_attrs",
+        columns: [{ name: "other", type: "TEXT" }],
+      });
+    },
+    Error,
+    "already exists",
+  );
+
+  // Cannot use attribute methods on feature tables
+  gpkg.createFeatureTable({
+    tableName: "points",
+    geometryType: "POINT",
+    srsId: 4326,
+  });
+
+  assertThrows(
+    () => {
+      gpkg.insertAttribute("points", { properties: { test: "value" } });
+    },
+    Error,
+    "not an attribute table",
+  );
+
+  gpkg.close();
+});
+
+Deno.test("GeoPackage - Bounding box filtering", () => {
+  const gpkg = new GeoPackage(":memory:");
+
+  gpkg.createFeatureTable({
+    tableName: "locations",
+    geometryType: "POINT",
+    srsId: 4326,
+    columns: [{ name: "name", type: "TEXT" }],
+  });
+
+  // Insert points at different locations
+  gpkg.insertFeature("locations", {
+    geometry: { type: "Point", coordinates: [0, 0] },
+    properties: { name: "Origin" },
+  });
+  gpkg.insertFeature("locations", {
+    geometry: { type: "Point", coordinates: [10, 10] },
+    properties: { name: "Northeast" },
+  });
+  gpkg.insertFeature("locations", {
+    geometry: { type: "Point", coordinates: [-10, -10] },
+    properties: { name: "Southwest" },
+  });
+  gpkg.insertFeature("locations", {
+    geometry: { type: "Point", coordinates: [50, 50] },
+    properties: { name: "Far Northeast" },
+  });
+
+  // Query with bounding box that includes Origin and Northeast
+  const bounds: BoundingBox = {
+    minX: -5,
+    minY: -5,
+    maxX: 15,
+    maxY: 15,
+  };
+
+  const filtered = gpkg.queryFeatures("locations", { bounds });
+  assertEquals(filtered.length, 2);
+
+  const names = filtered.map((f) => f.properties.name).sort();
+  assertEquals(names, ["Northeast", "Origin"]);
+
+  // Query with bounds that includes only Far Northeast
+  const farBounds: BoundingBox = {
+    minX: 40,
+    minY: 40,
+    maxX: 60,
+    maxY: 60,
+  };
+
+  const farFiltered = gpkg.queryFeatures("locations", { bounds: farBounds });
+  assertEquals(farFiltered.length, 1);
+  assertEquals(farFiltered[0].properties.name, "Far Northeast");
+
+  // Query with bounds that doesn't include any points
+  const emptyBounds: BoundingBox = {
+    minX: 100,
+    minY: 100,
+    maxX: 110,
+    maxY: 110,
+  };
+
+  const emptyFiltered = gpkg.queryFeatures("locations", {
+    bounds: emptyBounds,
+  });
+  assertEquals(emptyFiltered.length, 0);
+
+  gpkg.close();
+});
+
+Deno.test("GeoPackage - Bounding box filtering with limit and offset", () => {
+  const gpkg = new GeoPackage(":memory:");
+
+  gpkg.createFeatureTable({
+    tableName: "grid",
+    geometryType: "POINT",
+    srsId: 4326,
+    columns: [{ name: "index", type: "INTEGER" }],
+  });
+
+  // Insert 10 points in a row
+  for (let i = 0; i < 10; i++) {
+    gpkg.insertFeature("grid", {
+      geometry: { type: "Point", coordinates: [i, 0] },
+      properties: { index: i },
+    });
+  }
+
+  // Bounds that includes points 0-5
+  const bounds: BoundingBox = {
+    minX: -1,
+    minY: -1,
+    maxX: 5.5,
+    maxY: 1,
+  };
+
+  // Without limit/offset, should get 6 points (0-5)
+  const all = gpkg.queryFeatures("grid", { bounds });
+  assertEquals(all.length, 6);
+
+  // With limit
+  const limited = gpkg.queryFeatures("grid", { bounds, limit: 3 });
+  assertEquals(limited.length, 3);
+
+  // With offset
+  const offset = gpkg.queryFeatures("grid", { bounds, offset: 2 });
+  assertEquals(offset.length, 4); // 6 - 2 = 4
+
+  // With both limit and offset
+  const both = gpkg.queryFeatures("grid", { bounds, limit: 2, offset: 1 });
+  assertEquals(both.length, 2);
+
+  gpkg.close();
+});
+
+Deno.test("GeoPackage - Bounding box filtering with polygon geometry", () => {
+  const gpkg = new GeoPackage(":memory:");
+
+  gpkg.createFeatureTable({
+    tableName: "areas",
+    geometryType: "POLYGON",
+    srsId: 4326,
+    columns: [{ name: "name", type: "TEXT" }],
+  });
+
+  // Small polygon at origin
+  gpkg.insertFeature("areas", {
+    geometry: {
+      type: "Polygon",
+      coordinates: [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]],
+    },
+    properties: { name: "Small" },
+  });
+
+  // Large polygon far away
+  gpkg.insertFeature("areas", {
+    geometry: {
+      type: "Polygon",
+      coordinates: [[[100, 100], [110, 100], [110, 110], [100, 110], [
+        100,
+        100,
+      ]]],
+    },
+    properties: { name: "Large" },
+  });
+
+  // Bounds that intersects only the small polygon
+  const bounds: BoundingBox = {
+    minX: -5,
+    minY: -5,
+    maxX: 5,
+    maxY: 5,
+  };
+
+  const filtered = gpkg.queryFeatures("areas", { bounds });
+  assertEquals(filtered.length, 1);
+  assertEquals(filtered[0].properties.name, "Small");
+
+  gpkg.close();
+});
+
+Deno.test("GeoPackage - Auto-update bounds on insert", () => {
+  const gpkg = new GeoPackage(":memory:");
+
+  gpkg.createFeatureTable({
+    tableName: "points",
+    geometryType: "POINT",
+    srsId: 4326,
+    columns: [{ name: "name", type: "TEXT" }],
+  });
+
+  // Initially, no bounds
+  let content = gpkg.getContent("points");
+  assertExists(content);
+  assertEquals(content.bounds, undefined);
+
+  // Insert first feature
+  gpkg.insertFeature("points", {
+    geometry: { type: "Point", coordinates: [10, 20] },
+    properties: { name: "First" },
+  });
+
+  // Bounds should now be set to the single point
+  content = gpkg.getContent("points");
+  assertExists(content);
+  assertExists(content.bounds);
+  assertEquals(content.bounds.minX, 10);
+  assertEquals(content.bounds.maxX, 10);
+  assertEquals(content.bounds.minY, 20);
+  assertEquals(content.bounds.maxY, 20);
+
+  // Insert second feature that expands bounds
+  gpkg.insertFeature("points", {
+    geometry: { type: "Point", coordinates: [-5, 30] },
+    properties: { name: "Second" },
+  });
+
+  // Bounds should now encompass both points
+  content = gpkg.getContent("points");
+  assertExists(content);
+  assertExists(content.bounds);
+  assertEquals(content.bounds.minX, -5);
+  assertEquals(content.bounds.maxX, 10);
+  assertEquals(content.bounds.minY, 20);
+  assertEquals(content.bounds.maxY, 30);
+
+  gpkg.close();
+});
+
+Deno.test("GeoPackage - Auto-update bounds on delete", () => {
+  const gpkg = new GeoPackage(":memory:");
+
+  gpkg.createFeatureTable({
+    tableName: "points",
+    geometryType: "POINT",
+    srsId: 4326,
+    columns: [{ name: "name", type: "TEXT" }],
+  });
+
+  // Insert two features
+  const id1 = gpkg.insertFeature("points", {
+    geometry: { type: "Point", coordinates: [0, 0] },
+    properties: { name: "Origin" },
+  });
+  gpkg.insertFeature("points", {
+    geometry: { type: "Point", coordinates: [100, 100] },
+    properties: { name: "Far" },
+  });
+
+  // Verify initial bounds include both points
+  let content = gpkg.getContent("points");
+  assertExists(content?.bounds);
+  assertEquals(content.bounds.maxX, 100);
+  assertEquals(content.bounds.maxY, 100);
+
+  // Delete the far point
+  gpkg.deleteFeature("points", id1 + 1); // Second feature
+
+  // Bounds should now be just the origin point
+  content = gpkg.getContent("points");
+  assertExists(content?.bounds);
+  assertEquals(content.bounds.minX, 0);
+  assertEquals(content.bounds.maxX, 0);
+  assertEquals(content.bounds.minY, 0);
+  assertEquals(content.bounds.maxY, 0);
+
+  gpkg.close();
+});
+
+Deno.test("GeoPackage - Auto-update bounds on geometry update", () => {
+  const gpkg = new GeoPackage(":memory:");
+
+  gpkg.createFeatureTable({
+    tableName: "points",
+    geometryType: "POINT",
+    srsId: 4326,
+    columns: [{ name: "name", type: "TEXT" }],
+  });
+
+  const id = gpkg.insertFeature("points", {
+    geometry: { type: "Point", coordinates: [10, 10] },
+    properties: { name: "Moving" },
+  });
+
+  // Verify initial bounds
+  let content = gpkg.getContent("points");
+  assertExists(content?.bounds);
+  assertEquals(content.bounds.minX, 10);
+  assertEquals(content.bounds.maxX, 10);
+
+  // Update geometry to new location
+  gpkg.updateFeature("points", id, {
+    geometry: { type: "Point", coordinates: [50, 50] },
+  });
+
+  // Bounds should reflect new location
+  content = gpkg.getContent("points");
+  assertExists(content?.bounds);
+  assertEquals(content.bounds.minX, 50);
+  assertEquals(content.bounds.maxX, 50);
+  assertEquals(content.bounds.minY, 50);
+  assertEquals(content.bounds.maxY, 50);
 
   gpkg.close();
 });

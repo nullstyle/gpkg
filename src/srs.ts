@@ -30,7 +30,8 @@ export const DEFAULT_SRS: SpatialReferenceSystem[] = [
     srsId: 4326,
     organization: "EPSG",
     organizationCoordsysId: 4326,
-    definition: `GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]]`,
+    definition:
+      `GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]]`,
     description: "WGS 84 geographic 2D CRS",
   },
   {
@@ -38,7 +39,8 @@ export const DEFAULT_SRS: SpatialReferenceSystem[] = [
     srsId: 3857,
     organization: "EPSG",
     organizationCoordsysId: 3857,
-    definition: `PROJCS["WGS 84 / Pseudo-Mercator",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Mercator_1SP"],PARAMETER["central_meridian",0],PARAMETER["scale_factor",1],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["X",EAST],AXIS["Y",NORTH],EXTENSION["PROJ4","+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +wktext +no_defs"],AUTHORITY["EPSG","3857"]]`,
+    definition:
+      `PROJCS["WGS 84 / Pseudo-Mercator",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Mercator_1SP"],PARAMETER["central_meridian",0],PARAMETER["scale_factor",1],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["X",EAST],AXIS["Y",NORTH],EXTENSION["PROJ4","+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +wktext +no_defs"],AUTHORITY["EPSG","3857"]]`,
     description: "WGS 84 / Pseudo-Mercator (Web Mercator)",
   },
   {
@@ -103,7 +105,9 @@ export function getSpatialReferenceSystem(
     WHERE srs_id = ?
   `);
 
-  const row = stmt.value<[string, number, string, number, string, string | null]>(srsId);
+  const row = stmt.value<
+    [string, number, string, number, string, string | null]
+  >(srsId);
   stmt.finalize();
 
   if (!row) {
@@ -123,14 +127,18 @@ export function getSpatialReferenceSystem(
 /**
  * List all spatial reference systems.
  */
-export function listSpatialReferenceSystems(db: Database): SpatialReferenceSystem[] {
+export function listSpatialReferenceSystems(
+  db: Database,
+): SpatialReferenceSystem[] {
   const stmt = db.prepare(`
     SELECT srs_name, srs_id, organization, organization_coordsys_id, definition, description
     FROM gpkg_spatial_ref_sys
     ORDER BY srs_id
   `);
 
-  const rows = stmt.values<[string, number, string, number, string, string | null]>();
+  const rows = stmt.values<
+    [string, number, string, number, string, string | null]
+  >();
   stmt.finalize();
 
   return rows.map((row) => ({
@@ -215,7 +223,10 @@ export function updateSpatialReferenceSystem(
 /**
  * Delete a spatial reference system.
  */
-export function deleteSpatialReferenceSystem(db: Database, srsId: number): void {
+export function deleteSpatialReferenceSystem(
+  db: Database,
+  srsId: number,
+): void {
   if (!isValidSrsId(srsId)) {
     throw new Error(`Invalid SRS ID: ${srsId}`);
   }
@@ -241,7 +252,10 @@ export function deleteSpatialReferenceSystem(db: Database, srsId: number): void 
 /**
  * Check if a spatial reference system exists.
  */
-export function hasSpatialReferenceSystem(db: Database, srsId: number): boolean {
+export function hasSpatialReferenceSystem(
+  db: Database,
+  srsId: number,
+): boolean {
   if (!isValidSrsId(srsId)) {
     return false;
   }

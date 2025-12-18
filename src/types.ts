@@ -134,6 +134,20 @@ export interface FeatureTableConfig {
 }
 
 /**
+ * Attribute table configuration (non-spatial table).
+ */
+export interface AttributeTableConfig {
+  /** Table name */
+  tableName: string;
+  /** Additional columns */
+  columns?: ColumnDefinition[];
+  /** Human-readable identifier */
+  identifier?: string;
+  /** Human-readable description */
+  description?: string;
+}
+
+/**
  * Tile matrix set definition.
  */
 export interface TileMatrixSet {
@@ -244,11 +258,21 @@ export interface Feature<T = Record<string, unknown>> {
 }
 
 /**
+ * Parameterized WHERE clause for safe SQL queries.
+ */
+export interface WhereClause {
+  /** SQL fragment with ? placeholders */
+  sql: string;
+  /** Parameter values to bind to placeholders */
+  params: unknown[];
+}
+
+/**
  * Query options for features.
  */
 export interface FeatureQueryOptions {
-  /** WHERE clause */
-  where?: string;
+  /** WHERE clause with parameterized SQL */
+  where?: WhereClause;
   /** Bounding box filter */
   bounds?: BoundingBox;
   /** Maximum number of results */

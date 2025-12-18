@@ -32,9 +32,9 @@
  *   properties: { name: "San Francisco", value: 42.5 }
  * });
  *
- * // Query features
+ * // Query features with parameterized WHERE clause
  * const features = gpkg.queryFeatures("points", {
- *   where: "value > 40"
+ *   where: { sql: "value > ?", params: [40] }
  * });
  *
  * // Close the database
@@ -47,6 +47,7 @@ export { GeoPackage } from "./src/geopackage.ts";
 
 // Export types
 export type {
+  AttributeTableConfig,
   BoundingBox,
   ColumnDefinition,
   Content,
@@ -54,17 +55,21 @@ export type {
   Feature,
   FeatureQueryOptions,
   FeatureTableConfig,
-  GeoPackageOptions,
   Geometry,
   GeometryColumn,
   GeometryFlags,
   GeometryType,
+  GeoPackageOptions,
   SpatialReferenceSystem,
   Tile,
   TileMatrix,
   TileMatrixSet,
   TileQueryOptions,
+  WhereClause,
 } from "./src/types.ts";
+
+// Export attribute table types
+export type { AttributeQueryOptions, AttributeRow } from "./src/attributes.ts";
 
 // Export geometry encoding/decoding functions
 export { decodeGeometry, encodeGeometry } from "./src/geometry.ts";

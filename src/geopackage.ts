@@ -5,14 +5,15 @@
 
 import { Database } from "@db/sqlite";
 import type {
+  AttributeTableConfig,
   BoundingBox,
   Content,
   Extension,
   Feature,
   FeatureQueryOptions,
   FeatureTableConfig,
-  GeoPackageOptions,
   GeometryColumn,
+  GeoPackageOptions,
   SpatialReferenceSystem,
   Tile,
   TileMatrix,
@@ -26,6 +27,7 @@ import * as contents from "./contents.ts";
 import * as features from "./features.ts";
 import * as tiles from "./tiles.ts";
 import * as extensions from "./extensions.ts";
+import * as attributes from "./attributes.ts";
 
 /**
  * GeoPackage database manager.
@@ -299,6 +301,73 @@ export class GeoPackage {
     return features.calculateFeatureBounds(this.db, tableName);
   }
 
+  // ========== Attributes ==========
+
+  /**
+   * Create an attribute table (non-spatial table).
+   */
+  createAttributeTable(config: AttributeTableConfig): void {
+    attributes.createAttributeTable(this.db, config);
+  }
+
+  /**
+   * Insert a row into an attribute table.
+   */
+  insertAttribute<T = Record<string, unknown>>(
+    tableName: string,
+    row: Omit<attributes.AttributeRow<T>, "id">,
+  ): number {
+    return attributes.insertAttribute(this.db, tableName, row);
+  }
+
+  /**
+   * Get an attribute row by ID.
+   */
+  getAttribute<T = Record<string, unknown>>(
+    tableName: string,
+    id: number,
+  ): attributes.AttributeRow<T> | undefined {
+    return attributes.getAttribute(this.db, tableName, id);
+  }
+
+  /**
+   * Query rows from an attribute table.
+   */
+  queryAttributes<T = Record<string, unknown>>(
+    tableName: string,
+    options?: attributes.AttributeQueryOptions,
+  ): attributes.AttributeRow<T>[] {
+    return attributes.queryAttributes(this.db, tableName, options);
+  }
+
+  /**
+   * Update an attribute row.
+   */
+  updateAttribute<T = Record<string, unknown>>(
+    tableName: string,
+    id: number,
+    updates: Partial<T>,
+  ): void {
+    attributes.updateAttribute(this.db, tableName, id, updates);
+  }
+
+  /**
+   * Delete an attribute row.
+   */
+  deleteAttribute(tableName: string, id: number): void {
+    attributes.deleteAttribute(this.db, tableName, id);
+  }
+
+  /**
+   * Count rows in an attribute table.
+   */
+  countAttributes(
+    tableName: string,
+    options?: Pick<attributes.AttributeQueryOptions, "where">,
+  ): number {
+    return attributes.countAttributes(this.db, tableName, options);
+  }
+
   // ========== Tiles ==========
 
   /**
@@ -380,7 +449,10 @@ export class GeoPackage {
   /**
    * Count tiles in a table.
    */
-  countTiles(tableName: string, options?: Pick<TileQueryOptions, "zoom">): number {
+  countTiles(
+    tableName: string,
+    options?: Pick<TileQueryOptions, "zoom">,
+  ): number {
     return tiles.countTiles(this.db, tableName, options);
   }
 
@@ -408,7 +480,12 @@ export class GeoPackage {
     tableName?: string | null,
     columnName?: string | null,
   ): Extension | undefined {
-    return extensions.getExtension(this.db, extensionName, tableName, columnName);
+    return extensions.getExtension(
+      this.db,
+      extensionName,
+      tableName,
+      columnName,
+    );
   }
 
   /**
@@ -440,7 +517,12 @@ export class GeoPackage {
     tableName?: string | null,
     columnName?: string | null,
   ): boolean {
-    return extensions.hasExtension(this.db, extensionName, tableName, columnName);
+    return extensions.hasExtension(
+      this.db,
+      extensionName,
+      tableName,
+      columnName,
+    );
   }
 
   /**

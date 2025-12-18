@@ -21,3 +21,5 @@ docs/generated/
 # Test artifacts
 tests/**/*.gpkg
 tests/**/*.db
+
+reviews/*

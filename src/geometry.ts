@@ -4,7 +4,7 @@
  */
 
 import type { Geometry, GeometryFlags } from "./types.ts";
-import { getWkbTypeCode, getGeometryTypeName } from "./utils.ts";
+import { getGeometryTypeName, getWkbTypeCode } from "./utils.ts";
 
 /**
  * GeoPackage binary geometry magic number (GP).
@@ -21,7 +21,10 @@ const GEOPACKAGE_VERSION = 0x00;
  */
 export function encodeGeometry(
   geometry: Geometry | null,
-  options: { srsId?: number; envelope?: "none" | "xy" | "xyz" | "xym" | "xyzm" } = {},
+  options: {
+    srsId?: number;
+    envelope?: "none" | "xy" | "xyz" | "xym" | "xyzm";
+  } = {},
 ): Uint8Array {
   if (geometry === null) {
     return encodeEmptyGeometry(options.srsId ?? 0);
@@ -32,7 +35,9 @@ export function encodeGeometry(
   const envelopeType = getEnvelopeType(envelope);
 
   // Calculate envelope if needed
-  const envelopeData = envelopeType > 0 ? calculateEnvelope(geometry, envelopeType) : null;
+  const envelopeData = envelopeType > 0
+    ? calculateEnvelope(geometry, envelopeType)
+    : null;
 
   // Encode WKB
   const wkb = encodeWkb(geometry);
@@ -88,8 +93,14 @@ export function encodeGeometry(
 /**
  * Decode a GeoPackage binary geometry.
  */
-export function decodeGeometry(buffer: Uint8Array): Geometry & { srsId: number } {
-  const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+export function decodeGeometry(
+  buffer: Uint8Array,
+): Geometry & { srsId: number } {
+  const view = new DataView(
+    buffer.buffer,
+    buffer.byteOffset,
+    buffer.byteLength,
+  );
   let offset = 0;
 
   // Read magic number
@@ -97,7 +108,9 @@ export function decodeGeometry(buffer: Uint8Array): Geometry & { srsId: number }
   offset += 2;
 
   if (magic !== GEOPACKAGE_MAGIC) {
-    throw new Error(`Invalid GeoPackage geometry magic number: 0x${magic.toString(16)}`);
+    throw new Error(
+      `Invalid GeoPackage geometry magic number: 0x${magic.toString(16)}`,
+    );
   }
 
   // Read version
@@ -138,12 +151,15 @@ function encodeEmptyGeometry(srsId: number): Uint8Array {
   // Header
   view.setUint16(0, GEOPACKAGE_MAGIC, false);
   view.setUint8(2, GEOPACKAGE_VERSION);
-  view.setUint8(3, encodeFlags({
-    binaryType: 0,
-    empty: true,
-    envelopeType: 0,
-    byteOrder: 1,
-  }));
+  view.setUint8(
+    3,
+    encodeFlags({
+      binaryType: 0,
+      empty: true,
+      envelopeType: 0,
+      byteOrder: 1,
+    }),
+  );
   view.setInt32(4, srsId, false);
 
   // WKB Point EMPTY (little-endian, type 1, NaN coordinates)
@@ -348,12 +364,12 @@ function encodeWkb(geometry: Geometry): Uint8Array {
 
     // Geometry type with Z/M flags
     let typeCode = getWkbTypeCode(geom.type);
-    
+
     // Detect Z and M from first coordinate
     const firstCoord = getFirstCoord(geom);
     const hasZ = firstCoord.length >= 3;
     const hasM = firstCoord.length >= 4;
-    
+
     // Add Z flag (1000) and M flag (2000) to type code
     if (hasZ && hasM) {
       typeCode += 3000; // XYZM
@@ -362,7 +378,7 @@ function encodeWkb(geometry: Geometry): Uint8Array {
     } else if (hasZ) {
       typeCode += 1000; // XYZ
     }
-    
+
     writeUint32(typeCode);
 
     // Geometry data
@@ -428,7 +444,11 @@ function encodeWkb(geometry: Geometry): Uint8Array {
  * Decode WKB (Well-Known Binary) to geometry.
  */
 function decodeWkb(buffer: Uint8Array): Geometry {
-  const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+  const view = new DataView(
+    buffer.buffer,
+    buffer.byteOffset,
+    buffer.byteLength,
+  );
   let offset = 0;
 
   function readUint8(): number {

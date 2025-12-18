@@ -4,8 +4,17 @@
  */
 
 import type { Database } from "@db/sqlite";
-import type { Tile, TileMatrix, TileMatrixSet, TileQueryOptions } from "./types.ts";
-import { escapeIdentifier, isValidZoomLevel, validateTableName } from "./utils.ts";
+import type {
+  Tile,
+  TileMatrix,
+  TileMatrixSet,
+  TileQueryOptions,
+} from "./types.ts";
+import {
+  escapeIdentifier,
+  isValidZoomLevel,
+  validateTableName,
+} from "./utils.ts";
 import { addContent, hasContent, updateContentTimestamp } from "./contents.ts";
 import { hasSpatialReferenceSystem } from "./srs.ts";
 
@@ -114,7 +123,10 @@ export function createTileMatrixSet(db: Database, config: TileMatrixSet): void {
 /**
  * Get tile matrix set by table name.
  */
-export function getTileMatrixSet(db: Database, tableName: string): TileMatrixSet | undefined {
+export function getTileMatrixSet(
+  db: Database,
+  tableName: string,
+): TileMatrixSet | undefined {
   validateTableName(tableName);
 
   const stmt = db.prepare(`
@@ -123,7 +135,9 @@ export function getTileMatrixSet(db: Database, tableName: string): TileMatrixSet
     WHERE table_name = ?
   `);
 
-  const row = stmt.value<[string, number, number, number, number, number]>(tableName);
+  const row = stmt.value<[string, number, number, number, number, number]>(
+    tableName,
+  );
   stmt.finalize();
 
   if (!row) {
@@ -223,7 +237,9 @@ export function getTileMatrix(
     WHERE table_name = ? AND zoom_level = ?
   `);
 
-  const row = stmt.value<[string, number, number, number, number, number, number, number]>(
+  const row = stmt.value<
+    [string, number, number, number, number, number, number, number]
+  >(
     tableName,
     zoomLevel,
   );
@@ -248,7 +264,10 @@ export function getTileMatrix(
 /**
  * List all tile matrices for a table.
  */
-export function listTileMatrices(db: Database, tableName: string): TileMatrix[] {
+export function listTileMatrices(
+  db: Database,
+  tableName: string,
+): TileMatrix[] {
   validateTableName(tableName);
 
   const stmt = db.prepare(`
@@ -258,7 +277,9 @@ export function listTileMatrices(db: Database, tableName: string): TileMatrix[] 
     ORDER BY zoom_level
   `);
 
-  const rows = stmt.values<[string, number, number, number, number, number, number, number]>(
+  const rows = stmt.values<
+    [string, number, number, number, number, number, number, number]
+  >(
     tableName,
   );
   stmt.finalize();
@@ -278,7 +299,11 @@ export function listTileMatrices(db: Database, tableName: string): TileMatrix[] 
 /**
  * Insert a tile into a tile pyramid table.
  */
-export function insertTile(db: Database, tableName: string, tile: Omit<Tile, "id">): number {
+export function insertTile(
+  db: Database,
+  tableName: string,
+  tile: Omit<Tile, "id">,
+): number {
   validateTableName(tableName);
 
   if (!isValidZoomLevel(tile.zoomLevel)) {
@@ -406,7 +431,9 @@ export function queryTiles(
   sql += " ORDER BY zoom_level, tile_column, tile_row";
 
   const stmt = db.prepare(sql);
-  const rows = stmt.values<[number, number, number, number, Uint8Array]>(...(params as []));
+  const rows = stmt.values<[number, number, number, number, Uint8Array]>(
+    ...(params as []),
+  );
   stmt.finalize();
 
   return rows.map((row) => ({
@@ -473,7 +500,10 @@ export function countTiles(
 /**
  * Get available zoom levels for a tile table.
  */
-export function getAvailableZoomLevels(db: Database, tableName: string): number[] {
+export function getAvailableZoomLevels(
+  db: Database,
+  tableName: string,
+): number[] {
   validateTableName(tableName);
 
   const sql = `

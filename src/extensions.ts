@@ -57,7 +57,9 @@ export function addExtension(db: Database, extension: Extension): void {
 
   if (existing) {
     throw new Error(
-      `Extension ${extension.extensionName} already registered for table ${extension.tableName ?? "database"}, column ${extension.columnName ?? "all"}`,
+      `Extension ${extension.extensionName} already registered for table ${
+        extension.tableName ?? "database"
+      }, column ${extension.columnName ?? "all"}`,
     );
   }
 
@@ -94,7 +96,9 @@ export function getExtension(
       AND (column_name IS ? OR (column_name IS NULL AND ? IS NULL))
   `);
 
-  const row = stmt.value<[string | null, string | null, string, string, string]>(
+  const row = stmt.value<
+    [string | null, string | null, string, string, string]
+  >(
     extensionName,
     tableName,
     tableName,
@@ -126,7 +130,9 @@ export function listExtensions(db: Database): Extension[] {
     ORDER BY extension_name, table_name, column_name
   `);
 
-  const rows = stmt.values<[string | null, string | null, string, string, string]>();
+  const rows = stmt.values<
+    [string | null, string | null, string, string, string]
+  >();
   stmt.finalize();
 
   return rows.map((row) => ({
@@ -141,7 +147,10 @@ export function listExtensions(db: Database): Extension[] {
 /**
  * List extensions for a specific table.
  */
-export function listTableExtensions(db: Database, tableName: string): Extension[] {
+export function listTableExtensions(
+  db: Database,
+  tableName: string,
+): Extension[] {
   validateTableName(tableName);
 
   const stmt = db.prepare(`
@@ -151,7 +160,9 @@ export function listTableExtensions(db: Database, tableName: string): Extension[
     ORDER BY extension_name, column_name
   `);
 
-  const rows = stmt.values<[string | null, string | null, string, string, string]>(tableName);
+  const rows = stmt.values<
+    [string | null, string | null, string, string, string]
+  >(tableName);
   stmt.finalize();
 
   return rows.map((row) => ({
@@ -174,7 +185,9 @@ export function listDatabaseExtensions(db: Database): Extension[] {
     ORDER BY extension_name
   `);
 
-  const rows = stmt.values<[string | null, string | null, string, string, string]>();
+  const rows = stmt.values<
+    [string | null, string | null, string, string, string]
+  >();
   stmt.finalize();
 
   return rows.map((row) => ({
@@ -242,7 +255,9 @@ export function deleteExtension(
 
   if (changes === 0) {
     throw new Error(
-      `Extension ${extensionName} not found for table ${tableName ?? "database"}, column ${columnName ?? "all"}`,
+      `Extension ${extensionName} not found for table ${
+        tableName ?? "database"
+      }, column ${columnName ?? "all"}`,
     );
   }
 }

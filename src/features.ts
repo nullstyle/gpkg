@@ -15,13 +15,19 @@ import type {
   GeometryType,
 } from "./types.ts";
 import {
+  boundsIntersect,
   escapeIdentifier,
   isValidGeometryType,
   normalizeGeometryType,
   validateColumnName,
   validateTableName,
 } from "./utils.ts";
-import { addContent, hasContent, updateContentTimestamp } from "./contents.ts";
+import {
+  addContent,
+  hasContent,
+  updateContentBounds,
+  updateContentTimestamp,
+} from "./contents.ts";
 import { hasSpatialReferenceSystem } from "./srs.ts";
 import { decodeGeometry, encodeGeometry } from "./geometry.ts";
 
@@ -240,6 +246,11 @@ export function insertFeature<T = Record<string, unknown>>(
     throw new Error(`Table ${tableName} is not a feature table`);
   }
 
+  // Validate geometry type matches declared type
+  if (feature.geometry) {
+    validateGeometryType(feature.geometry, geomCol.geometryTypeName, tableName);
+  }
+
   // Encode geometry
   const geomBlob = feature.geometry
     ? encodeGeometry(feature.geometry, { srsId: geomCol.srsId })
@@ -273,6 +284,11 @@ export function insertFeature<T = Record<string, unknown>>(
 
   // Update content timestamp
   updateContentTimestamp(db, tableName);
+
+  // Update bounds if the feature has geometry
+  if (feature.geometry) {
+    updateTableBounds(db, tableName);
+  }
 
   return id;
 }
@@ -326,11 +342,12 @@ export function queryFeatures<T = Record<string, unknown>>(
   // WHERE clause
   const whereClauses: string[] = [];
   if (options.where) {
-    whereClauses.push(`(${options.where})`);
+    whereClauses.push(`(${options.where.sql})`);
+    params.push(...options.where.params);
   }
 
   if (options.bounds) {
-    // Simple bounding box filter (not using spatial index)
+    // Filter out null geometries when bounds filtering is requested
     whereClauses.push(
       `${escapeIdentifier(geomCol.columnName)} IS NOT NULL`,
     );
@@ -345,21 +362,42 @@ export function queryFeatures<T = Record<string, unknown>>(
     sql += ` ORDER BY ${options.orderBy}`;
   }
 
-  // LIMIT
-  if (options.limit !== undefined) {
-    sql += ` LIMIT ${options.limit}`;
-  }
-
-  // OFFSET
-  if (options.offset !== undefined) {
-    sql += ` OFFSET ${options.offset}`;
+  // LIMIT and OFFSET are applied after bounds filtering in memory
+  // when bounds is specified, otherwise apply in SQL
+  if (!options.bounds) {
+    if (options.limit !== undefined) {
+      sql += ` LIMIT ${options.limit}`;
+    }
+    if (options.offset !== undefined) {
+      sql += ` OFFSET ${options.offset}`;
+    }
   }
 
   const stmt = db.prepare(sql);
   const rows = stmt.all<Record<string, unknown>>(...(params as []));
   stmt.finalize();
 
-  return rows.map((row) => rowToFeature(row, geomCol.columnName));
+  let features = rows.map((row) => rowToFeature<T>(row, geomCol.columnName));
+
+  // Apply bounding box filtering in memory if bounds specified
+  if (options.bounds) {
+    features = features.filter((feature) => {
+      if (!feature.geometry) return false;
+      const featureBounds = calculateGeometryBounds(feature.geometry);
+      if (!featureBounds) return false;
+      return boundsIntersect(featureBounds, options.bounds!);
+    });
+
+    // Apply limit and offset after filtering
+    if (options.offset !== undefined) {
+      features = features.slice(options.offset);
+    }
+    if (options.limit !== undefined) {
+      features = features.slice(0, options.limit);
+    }
+  }
+
+  return features;
 }
 
 /**
@@ -407,6 +445,14 @@ export function updateFeature<T = Record<string, unknown>>(
 
   // Update geometry
   if (updates.geometry !== undefined) {
+    // Validate geometry type matches declared type
+    if (updates.geometry) {
+      validateGeometryType(
+        updates.geometry,
+        geomCol.geometryTypeName,
+        tableName,
+      );
+    }
     setClauses.push(`${escapeIdentifier(geomCol.columnName)} = ?`);
     values.push(
       updates.geometry
@@ -449,6 +495,11 @@ export function updateFeature<T = Record<string, unknown>>(
 
   // Update content timestamp
   updateContentTimestamp(db, tableName);
+
+  // Update bounds if geometry was changed
+  if (updates.geometry !== undefined) {
+    updateTableBounds(db, tableName);
+  }
 }
 
 /**
@@ -472,6 +523,9 @@ export function deleteFeature(
 
   // Update content timestamp
   updateContentTimestamp(db, tableName);
+
+  // Recalculate bounds after deletion
+  updateTableBounds(db, tableName);
 }
 
 /**
@@ -488,7 +542,8 @@ export function countFeatures(
   const params: unknown[] = [];
 
   if (options.where) {
-    sql += ` WHERE ${options.where}`;
+    sql += ` WHERE ${options.where.sql}`;
+    params.push(...options.where.params);
   }
 
   const stmt = db.prepare(sql);
@@ -496,6 +551,93 @@ export function countFeatures(
   stmt.finalize();
 
   return count?.[0] ?? 0;
+}
+
+/**
+ * Update the bounds in gpkg_contents for a feature table.
+ * Recalculates the bounding box from all features.
+ */
+function updateTableBounds(db: Database, tableName: string): void {
+  const bounds = calculateFeatureBounds(db, tableName);
+  if (bounds) {
+    updateContentBounds(db, tableName, bounds);
+  }
+}
+
+/**
+ * Mapping of GeoJSON geometry types to GeoPackage geometry type names.
+ */
+const GEOJSON_TO_GPKG_TYPE: Record<string, string> = {
+  Point: "POINT",
+  LineString: "LINESTRING",
+  Polygon: "POLYGON",
+  MultiPoint: "MULTIPOINT",
+  MultiLineString: "MULTILINESTRING",
+  MultiPolygon: "MULTIPOLYGON",
+  GeometryCollection: "GEOMETRYCOLLECTION",
+};
+
+/**
+ * Check if a geometry type is compatible with the declared column type.
+ */
+function isGeometryTypeCompatible(
+  geometryType: string,
+  declaredType: GeometryType,
+): boolean {
+  const normalizedDeclared = normalizeGeometryType(declaredType);
+  const normalizedGeom = normalizeGeometryType(
+    GEOJSON_TO_GPKG_TYPE[geometryType] ?? geometryType,
+  );
+
+  // GEOMETRY accepts any geometry type
+  if (normalizedDeclared === "GEOMETRY") {
+    return true;
+  }
+
+  // Exact match
+  if (normalizedGeom === normalizedDeclared) {
+    return true;
+  }
+
+  // CURVE accepts LINESTRING, CIRCULARSTRING, COMPOUNDCURVE
+  if (normalizedDeclared === "CURVE") {
+    return ["LINESTRING", "CIRCULARSTRING", "COMPOUNDCURVE"].includes(
+      normalizedGeom,
+    );
+  }
+
+  // SURFACE accepts POLYGON, CURVEPOLYGON
+  if (normalizedDeclared === "SURFACE") {
+    return ["POLYGON", "CURVEPOLYGON"].includes(normalizedGeom);
+  }
+
+  // MULTICURVE accepts MULTILINESTRING
+  if (normalizedDeclared === "MULTICURVE") {
+    return ["MULTILINESTRING"].includes(normalizedGeom);
+  }
+
+  // MULTISURFACE accepts MULTIPOLYGON
+  if (normalizedDeclared === "MULTISURFACE") {
+    return ["MULTIPOLYGON"].includes(normalizedGeom);
+  }
+
+  return false;
+}
+
+/**
+ * Validate that a geometry matches the declared type for a table.
+ * Throws an error if the geometry type is incompatible.
+ */
+function validateGeometryType(
+  geometry: Geometry,
+  declaredType: GeometryType,
+  tableName: string,
+): void {
+  if (!isGeometryTypeCompatible(geometry.type, declaredType)) {
+    throw new Error(
+      `Geometry type ${geometry.type} is not compatible with declared type ${declaredType} for table ${tableName}`,
+    );
+  }
 }
 
 /**
@@ -531,6 +673,28 @@ export function calculateFeatureBounds(
 
   if (!hasGeometry) {
     return undefined;
+  }
+
+  return { minX, minY, maxX, maxY };
+}
+
+/**
+ * Calculate bounding box from a geometry.
+ */
+function calculateGeometryBounds(geometry: Geometry): BoundingBox | undefined {
+  const coords = extractCoordinates(geometry);
+  if (coords.length === 0) {
+    return undefined;
+  }
+
+  let minX = Infinity, minY = Infinity;
+  let maxX = -Infinity, maxY = -Infinity;
+
+  for (const [x, y] of coords) {
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x);
+    maxY = Math.max(maxY, y);
   }
 
   return { minX, minY, maxX, maxY };

@@ -1,6 +1,6 @@
 import { assertEquals, assertExists, assertThrows } from "@std/assert";
 import { GeoPackage } from "../mod.ts";
-import { Database } from "@db/sqlite";
+import type { Database } from "@db/sqlite";
 
 // Helper to access private DB instance for raw SQL checks
 function getDb(gpkg: GeoPackage): Database {
@@ -73,7 +73,9 @@ Deno.test("OGC Compliance - Geometry Header", () => {
   });
 
   const db = getDb(gpkg);
-  const row = db.prepare("SELECT geom FROM test_geom WHERE id = ?").value<[Uint8Array]>(featureId);
+  const row = db.prepare("SELECT geom FROM test_geom WHERE id = ?").value<
+    [Uint8Array]
+  >(featureId);
   assertExists(row);
   const buffer = row[0];
 
@@ -101,7 +103,7 @@ Deno.test("OGC Compliance - Geometry Header", () => {
 
 Deno.test("OGC Compliance - gpkg_contents constraints", () => {
   const gpkg = new GeoPackage(":memory:");
-  const db = getDb(gpkg);
+  const _db = getDb(gpkg);
 
   // Attempt to insert invalid content type
   assertThrows(() => {
@@ -113,7 +115,7 @@ Deno.test("OGC Compliance - gpkg_contents constraints", () => {
       tableName: "invalid_table",
       // @ts-ignore: testing invalid type
       dataType: "invalid_type",
-      srsId: 4326
+      srsId: 4326,
     });
   });
 
